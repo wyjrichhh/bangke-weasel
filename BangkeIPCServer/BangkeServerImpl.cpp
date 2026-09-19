@@ -1,5 +1,6 @@
 ﻿#include "stdafx.h"
 #include "BangkeServerImpl.h"
+#include <logging.h>
 #include <mutex>
 #include <Windows.h>
 #include <resource.h>
@@ -472,7 +473,21 @@ void PipeServer::_ProcessPipeThread(HANDLE pipe, ServerHandler const& handler) {
       _Receive(pipe, &msg, sizeof(msg));
       handler(msg, [this, pipe](Msg resp) { _Send(pipe, resp); });
     }
+  } catch (const std::exception& e) {
+    // 这里原来是个光秃秃的 catch(...)：处理某条请求时抛了异常，连接就此断掉，
+    // 而外面什么都不知道 —— 客户端拿到的是"连上了又立刻断"，表现为按键全部放行
+    // （输入法只能打英文）。至少要留下是谁抛的。
+    LOG(ERROR) << "pipe handler threw: " << e.what();
+    _FinalizePipe(pipe);
+  } catch (DWORD err) {
+    // _ThrowIfNot/_ThrowLastError 走的是这个类型
+    if (err != ERROR_MORE_DATA && err != ERROR_BROKEN_PIPE &&
+        err != ERROR_OPERATION_ABORTED) {
+      LOG(ERROR) << "pipe io failed: " << err;
+    }
+    _FinalizePipe(pipe);
   } catch (...) {
+    LOG(ERROR) << "pipe handler threw an unknown exception";
     _FinalizePipe(pipe);
   }
 }
