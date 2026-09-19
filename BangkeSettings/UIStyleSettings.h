@@ -37,6 +37,16 @@ class UIStyleSettings {
   int GetLayoutInt(const std::string& key, int fallback);
   void SetLayoutInt(const std::string& key, int value);
 
+  // ---- style/ 下的普通键,同样读 = 补丁 ⊕ 共享默认、写 = 补丁 ----
+  // key 为 style 下的相对路径,如 "inline_preedit"、"layout/spacing"
+  bool GetStyleBool(const std::string& key, bool fallback);
+  void SetStyleBool(const std::string& key, bool value);
+  int GetStyleInt(const std::string& key, int fallback);
+  void SetStyleInt(const std::string& key, int value);
+  std::string GetStyleString(const std::string& key,
+                             const std::string& fallback);
+  void SetStyleString(const std::string& key, const std::string& value);
+
   // ---- 自定义配色(用户补丁里的 preset_color_schemes/bangke_custom)----
   // 颜色一律 0xAARRGGBB;方案节点声明 color_format: argb,直读直写
   bool HasCustomScheme();

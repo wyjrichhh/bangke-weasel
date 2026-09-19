@@ -1,11 +1,13 @@
 #include "StylePage.h"
 
+#include <QAbstractButton>
 #include <QColorDialog>
 #include <QComboBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPainter>
 #include <QPixmap>
 #include <QPushButton>
@@ -198,6 +200,15 @@ StylePage::StylePage(QWidget* parent) : QWidget(parent) {
       {"hilite_padding", "高亮内边距", 0, 24, 8},
       {"shadow_radius", "阴影范围", 0, 32, 10},
       {"shadow_offset_y", "阴影纵向偏移", -16, 16, 3},
+      {"shadow_offset_x", "阴影横向偏移", -16, 16, 0},
+      {"margin_y", "上下内边距", 0, 24, 12},
+      {"spacing", "行间距", 0, 32, 12},
+      {"hilite_spacing", "高亮与文字间距", 0, 24, 6},
+      {"hilite_padding_x", "高亮横向内边距", 0, 24, 8},
+      {"hilite_padding_y", "高亮纵向内边距", 0, 24, 8},
+      {"linespacing", "候选行高", 0, 32, 0},
+      {"min_width", "最小宽度", 0, 600, 0},
+      {"max_width", "最大宽度", 0, 600, 0},
   };
   std::vector<QWidget*> tuningRows;
   for (const auto& d : defs) {
@@ -242,6 +253,138 @@ StylePage::StylePage(QWidget* parent) : QWidget(parent) {
   hint->setObjectName(QStringLiteral("hint"));
   customCard->addWidget(hint);
   layout->addWidget(makeCard(QStringLiteral(u"自定义配色"), customCard));
+
+  // ---- 字体 ----
+  auto* fontFace = new QLineEdit(this);
+  fontFace->setFixedWidth(220);
+  fontFace->setPlaceholderText(QStringLiteral(u"留空跟随系统"));
+  auto* labelPoint = new QSpinBox(this);
+  labelPoint->setRange(0, 48);
+  auto* commentPoint = new QSpinBox(this);
+  commentPoint->setRange(0, 48);
+  auto* abbrevLen = new QSpinBox(this);
+  abbrevLen->setRange(0, 20);
+  for (auto* s : {labelPoint, commentPoint, abbrevLen})
+    s->setFixedWidth(96);
+  layout->insertWidget(
+      1, makeCard(QStringLiteral(u"字体"),
+                  makeSettingRows({
+                      makeSettingRow(QStringLiteral(u"字体"), fontFace),
+                      makeSettingRow(QStringLiteral(u"序号字号"), labelPoint,
+                                     QStringLiteral(u"0 = 不显示序号")),
+                      makeSettingRow(QStringLiteral(u"注释字号"), commentPoint,
+                                     QStringLiteral(u"0 = 不显示注释")),
+                      makeSettingRow(QStringLiteral(u"候选缩写长度"), abbrevLen,
+                                     QStringLiteral(u"0 = 不缩写")),
+                  })));
+  bindText("font_face", fontFace);
+  bindInt("label_font_point", labelPoint);
+  bindInt("comment_font_point", commentPoint);
+  bindInt("candidate_abbreviate_length", abbrevLen);
+
+  // ---- 深色配色 ----
+  darkSchemeCombo_ = new QComboBox(this);
+  darkSchemeCombo_->setFixedWidth(170);
+  layout->insertWidget(
+      2, makeCard(QStringLiteral(u"深色模式"),
+                  makeSettingRows({
+                      makeSettingRow(QStringLiteral(u"深色配色方案"),
+                                     darkSchemeCombo_,
+                                     QStringLiteral(u"系统切到深色时改用它")),
+                  })));
+  bindChoice("color_scheme_dark", darkSchemeCombo_);
+
+  // ---- 显示 ----
+  auto* inlinePreedit = new ToggleSwitch;
+  auto* asciiTipFollow = new ToggleSwitch;
+  auto* enhancedPosition = new ToggleSwitch;
+  auto* trayIcon = new ToggleSwitch;
+  auto* pagingOnScroll = new ToggleSwitch;
+  auto* clickToCapture = new ToggleSwitch;
+  auto* preeditType = new QComboBox(this);
+  preeditType->setFixedWidth(150);
+  preeditType->addItem(QStringLiteral(u"只显示已选部分"),
+                       QStringLiteral("composition"));
+  preeditType->addItem(QStringLiteral(u"预览首个候选"), QStringLiteral("preview"));
+  preeditType->addItem(QStringLiteral(u"预览整句"), QStringLiteral("preview_all"));
+  layout->insertWidget(
+      3, makeCard(QStringLiteral(u"显示"),
+                  makeSettingRows({
+                      makeSettingRow(QStringLiteral(u"在输入框中显示编码"),
+                                     inlinePreedit),
+                      makeSettingRow(QStringLiteral(u"编码显示方式"), preeditType),
+                      makeSettingRow(QStringLiteral(u"英文提示跟随光标"),
+                                     asciiTipFollow),
+                      makeSettingRow(QStringLiteral(u"候选窗跟随光标"),
+                                     enhancedPosition),
+                      makeSettingRow(QStringLiteral(u"托盘图标"), trayIcon),
+                      makeSettingRow(QStringLiteral(u"滚轮翻页"), pagingOnScroll),
+                      makeSettingRow(QStringLiteral(u"点击候选窗捕获"), clickToCapture),
+                  })));
+  bindBool("inline_preedit", inlinePreedit);
+  bindChoice("preedit_type", preeditType);
+  bindBool("ascii_tip_follow_cursor", asciiTipFollow);
+  bindBool("enhanced_position", enhancedPosition);
+  bindBool("display_tray_icon", trayIcon);
+  bindBool("paging_on_scroll", pagingOnScroll);
+  bindBool("click_to_capture", clickToCapture);
+
+  // ---- 鼠标与渲染 ----
+  auto* hoverType = new QComboBox(this);
+  hoverType->setFixedWidth(150);
+  hoverType->addItem(QStringLiteral(u"无"), QStringLiteral("none"));
+  hoverType->addItem(QStringLiteral(u"半高亮"), QStringLiteral("semi_hilite"));
+  hoverType->addItem(QStringLiteral(u"高亮"), QStringLiteral("hilite"));
+  auto* antialias = new QComboBox(this);
+  antialias->setFixedWidth(150);
+  antialias->addItem(QStringLiteral(u"默认"), QStringLiteral("default"));
+  antialias->addItem(QStringLiteral(u"灰度"), QStringLiteral("grayscale"));
+  antialias->addItem(QStringLiteral(u"ClearType"), QStringLiteral("cleartype"));
+  antialias->addItem(QStringLiteral(u"强制灰度"), QStringLiteral("force_dword"));
+  antialias->addItem(QStringLiteral(u"不做抗锯齿"), QStringLiteral("aliased"));
+  layout->insertWidget(
+      4, makeCard(QStringLiteral(u"鼠标与渲染"),
+                  makeSettingRows({
+                      makeSettingRow(QStringLiteral(u"悬停效果"), hoverType),
+                      makeSettingRow(QStringLiteral(u"字体抗锯齿"), antialias),
+                  })));
+  bindChoice("hover_type", hoverType);
+  bindChoice("antialias_mode", antialias);
+
+  // ---- 竖排文字 ----
+  auto* verticalText = new ToggleSwitch;
+  auto* verticalLtr = new ToggleSwitch;
+  auto* verticalWrap = new ToggleSwitch;
+  auto* verticalAutoReverse = new ToggleSwitch;
+  layout->insertWidget(
+      5, makeCard(QStringLiteral(u"竖排文字"),
+                  makeSettingRows({
+                      makeSettingRow(QStringLiteral(u"竖排显示候选"),
+                                     verticalText),
+                      makeSettingRow(QStringLiteral(u"从左到右"), verticalLtr),
+                      makeSettingRow(QStringLiteral(u"自动换行"), verticalWrap),
+                      makeSettingRow(QStringLiteral(u"上下自动反向"),
+                                     verticalAutoReverse),
+                  })));
+  bindBool("vertical_text", verticalText);
+  bindBool("vertical_text_left_to_right", verticalLtr);
+  bindBool("vertical_text_with_wrap", verticalWrap);
+  bindBool("vertical_auto_reverse", verticalAutoReverse);
+
+  // ---- 格式 ----
+  auto* labelFormat = new QLineEdit(this);
+  labelFormat->setFixedWidth(220);
+  auto* markText = new QLineEdit(this);
+  markText->setFixedWidth(220);
+  layout->insertWidget(
+      6, makeCard(QStringLiteral(u"格式"),
+                  makeSettingRows({
+                      makeSettingRow(QStringLiteral(u"序号格式"), labelFormat,
+                                     QStringLiteral(u"%s 即序号")),
+                      makeSettingRow(QStringLiteral(u"高亮标记"), markText),
+                  })));
+  bindText("label_format", labelFormat);
+  bindText("mark_text", markText);
 
   auto* prevForm = new QVBoxLayout();
   prevForm->addWidget(preview_);
@@ -294,6 +437,22 @@ void StylePage::onCustomEdited() {
   updatePreview();
 }
 
+void StylePage::bindBool(const char* key, QAbstractButton* w) {
+  styleControls_.push_back({StyleControl::Bool, key, w, {}});
+}
+
+void StylePage::bindInt(const char* key, QSpinBox* w) {
+  styleControls_.push_back({StyleControl::Int, key, w, {}});
+}
+
+void StylePage::bindText(const char* key, QLineEdit* w) {
+  styleControls_.push_back({StyleControl::Text, key, w, {}});
+}
+
+void StylePage::bindChoice(const char* key, QComboBox* w) {
+  styleControls_.push_back({StyleControl::Choice, key, w, {}});
+}
+
 void StylePage::load() {
   if (loaded_)
     return;
@@ -321,6 +480,14 @@ void StylePage::forceLoad() {
   int index = schemeCombo_->findData(QString::fromStdString(activeScheme_));
   schemeCombo_->setCurrentIndex(index >= 0 ? index : 0);
 
+  darkSchemeCombo_->blockSignals(true);
+  darkSchemeCombo_->clear();
+  darkSchemeCombo_->addItem(QStringLiteral(u"跟随浅色"), QStringLiteral(""));
+  for (auto& s : schemes)
+    darkSchemeCombo_->addItem(QString::fromStdString(s.name),
+                              QString::fromStdString(s.color_scheme_id));
+  darkSchemeCombo_->blockSignals(false);
+
   activeFontSize_ = settings_.GetFontSize(14);
   fontSize_->setValue(activeFontSize_);
   activeHorizontal_ = settings_.GetHorizontal(false);
@@ -330,6 +497,42 @@ void StylePage::forceLoad() {
     const int v = settings_.GetLayoutInt(ls.key, 0);
     ls.spin->setValue(v);
     initLayout_[ls.key] = v;
+  }
+
+  // 通用绑定:读 = 补丁 ⊕ 共享默认,补丁与共享都没有就用控件的构造默认值
+  for (auto& c : styleControls_) {
+    switch (c.kind) {
+      case StyleControl::Bool: {
+        auto* box = static_cast<QAbstractButton*>(c.widget);
+        const bool v = settings_.GetStyleBool(c.key, box->isChecked());
+        box->setChecked(v);
+        c.init = v ? "1" : "0";
+        break;
+      }
+      case StyleControl::Int: {
+        auto* spin = static_cast<QSpinBox*>(c.widget);
+        const int v = settings_.GetStyleInt(c.key, spin->value());
+        spin->setValue(v);
+        c.init = std::to_string(v);
+        break;
+      }
+      case StyleControl::Text: {
+        auto* edit = static_cast<QLineEdit*>(c.widget);
+        edit->setText(QString::fromStdString(settings_.GetStyleString(
+            c.key, edit->text().toStdString())));
+        c.init = edit->text().toStdString();
+        break;
+      }
+      case StyleControl::Choice: {
+        auto* combo = static_cast<QComboBox*>(c.widget);
+        const QString v = QString::fromStdString(settings_.GetStyleString(
+            c.key, combo->currentData().toString().toStdString()));
+        const int i = combo->findData(v);
+        combo->setCurrentIndex(i >= 0 ? i : 0);
+        c.init = combo->currentData().toString().toStdString();
+        break;
+      }
+    }
   }
 
   // 自定义配色初值:已有 bangke_custom 用之,否则从当前方案颜色起步
@@ -395,6 +598,46 @@ bool StylePage::save() {
     if (ls.spin->value() != initLayout_[ls.key]) {
       settings_.SetLayoutInt(ls.key, ls.spin->value());
       changed = true;
+    }
+  }
+  for (auto& c : styleControls_) {
+    switch (c.kind) {
+      case StyleControl::Bool: {
+        auto* box = static_cast<QAbstractButton*>(c.widget);
+        const std::string now = box->isChecked() ? "1" : "0";
+        if (now == c.init)
+          break;
+        settings_.SetStyleBool(c.key, box->isChecked());
+        changed = true;
+        break;
+      }
+      case StyleControl::Int: {
+        auto* spin = static_cast<QSpinBox*>(c.widget);
+        const std::string now = std::to_string(spin->value());
+        if (now == c.init)
+          break;
+        settings_.SetStyleInt(c.key, spin->value());
+        changed = true;
+        break;
+      }
+      case StyleControl::Text: {
+        auto* edit = static_cast<QLineEdit*>(c.widget);
+        const std::string now = edit->text().toStdString();
+        if (now == c.init)
+          break;
+        settings_.SetStyleString(c.key, now);
+        changed = true;
+        break;
+      }
+      case StyleControl::Choice: {
+        auto* combo = static_cast<QComboBox*>(c.widget);
+        const std::string now = combo->currentData().toString().toStdString();
+        if (now == c.init)
+          break;
+        settings_.SetStyleString(c.key, now);
+        changed = true;
+        break;
+      }
     }
   }
   // 自定义配色:内容有变化才写。方案归属以下拉选择为准(选「自定义」时

@@ -2,6 +2,7 @@
 #include <QWidget>
 
 #include <QStringList>
+#include <map>
 
 class QComboBox;
 class QFormLayout;
@@ -10,9 +11,11 @@ class QSpinBox;
 
 class ToggleSwitch;
 
-// AI 预测配置页:读写"当前方案"custom.yaml 的 ai_predict: 块。
-// 当前方案取自 user.yaml 的 previously_selected_schema,切换方案后
-// 重新进入页面即重载;保存时由 MainWindow 统一触发重新部署。
+// AI 预测配置页:一页管所有接了 AI 的方案,按方案各存一份,顶部选方案。
+//
+// ai_predict 是插件从 *方案* 配置里读的(predict_translator.cc 用
+// engine_->schema()->config()),所以它天然按方案隔离——一个方案一套值,编辑哪一个只
+// 影响哪一个。默认停在当前正在用的方案,免得改了半天改的不是生效的那份。
 //
 // 纯推理模式(ai_only)还要动同文件的 speller/alphabet:数字与标点必须留在同一个拼音段
 // 里,模型才收得到;而该键在模式关闭时要逐字节还原。记账键 alphabet_backup /
@@ -26,7 +29,26 @@ class AIPage : public QWidget {
   bool save();
 
  private:
-  QString stateSignature() const;
+  // 一个方案的 AI 设置,与 ai_predict 块一一对应。默认值与插件里的同名默认值一致
+  // (见 predict_translator.cc 的 LoadOptions),补丁里缺哪个键就按哪个默认走。
+  struct AIPredict {
+    bool enabled = true;
+    bool filterPunctuation = true;
+    bool aiOnly = false;
+    QString device = QStringLiteral("cpu");
+    int targetIndex = 1;
+    int minInputLength = 12;
+    int minHanzi = 2;
+    int debounceMs = 200;
+    int maxTokens = 64;
+    int searchRange = 10;
+    int contextWindowSize = 10;
+    int minContextPromptLength = 2;
+  };
+
+  void showSchema(const QString& schemaId);
+  void commitWidgets();
+  AIPredict readPredict(const QString& schemaId) const;
 
   ToggleSwitch* enabled_ = nullptr;
   ToggleSwitch* filterPunctuation_ = nullptr;
@@ -41,9 +63,15 @@ class AIPage : public QWidget {
   QSpinBox* contextWindow_ = nullptr;
   QSpinBox* minContextPrompt_ = nullptr;
   class QLineEdit* modelPath_ = nullptr;
+  QComboBox* schemaCombo_ = nullptr;
   QLabel* schemaLabel_ = nullptr;
 
-  QString currentSchemaId() const;
+  // 各方案的设置。载入时按方案铺开,保存时只写值真的动过的那些
+  std::map<QString, AIPredict> predict_;
+  QString currentSchema_;
+
+  QString activeSchemaId() const;
+  QStringList aiWiredSchemas() const;
   QString schemaCustomYaml(const QString& schemaId) const;
   QString schemaDisplayName(const QString& schemaId) const;
   // 方案的生效 speller/alphabet(纯推理模式扩展/还原它)
@@ -58,6 +86,4 @@ class AIPage : public QWidget {
                                   bool aiOnly,
                                   QString& block,
                                   const QString& yaml);
-  // 载入时的控件状态签名;保存仅在有差异时写文件
-  QString initState_;
 };

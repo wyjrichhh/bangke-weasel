@@ -42,6 +42,12 @@ GeneralPage::GeneralPage(QWidget* parent) : QWidget(parent) {
 
   commentHints_ = new ToggleSwitch;
 
+  notifications_ = new ToggleSwitch;
+  notificationsTime_ = new QSpinBox;
+  notificationsTime_->setRange(0, 5000);
+  notificationsTime_->setSuffix(QStringLiteral(u" ms"));
+  notificationsTime_->setFixedWidth(96);
+
   layout->addWidget(makeCard(
       QStringLiteral(u"输入习惯"),
       makeSettingRows({
@@ -50,6 +56,14 @@ GeneralPage::GeneralPage(QWidget* parent) : QWidget(parent) {
           makeSettingRow(QStringLiteral(u"右 Shift 切换行为"), shiftR_),
           makeSettingRow(QStringLiteral(u"候选词后显示拼音注释"), commentHints_,
                          QStringLiteral(u"关闭时仅保留 AI 标记")),
+      })));
+  layout->addWidget(makeCard(
+      QStringLiteral(u"提示"),
+      makeSettingRows({
+          makeSettingRow(QStringLiteral(u"切换时弹出提示"), notifications_,
+                         QStringLiteral(u"切换方案、开关中英等")),
+          makeSettingRow(QStringLiteral(u"提示停留时间"),
+                         notificationsTime_),
       })));
   layout->addStretch(1);
 
@@ -76,6 +90,20 @@ void GeneralPage::load() {
     rime->config_get_int(&wcfg, "style/comment_font_point", &cfp);
   commentHints_->setChecked(cfp >= 14);
   initCommentHints_ = cfp >= 14;
+
+  // 共享 weasel.yaml 里 show_notifications 默认 false、停留 1200ms;
+  // settings_get_config 只含补丁,取不到就按这两个默认显示
+  Bool notify = False;
+  const bool hasNotify =
+      api_->settings_get_config(bangkeStyle_, &wcfg) &&
+      rime->config_get_bool(&wcfg, "show_notifications", &notify);
+  notifications_->setChecked(hasNotify && notify != False);
+  initNotifications_ = notifications_->isChecked();
+  int ntime = 1200;
+  if (api_->settings_get_config(bangkeStyle_, &wcfg))
+    rime->config_get_int(&wcfg, "show_notifications_time", &ntime);
+  notificationsTime_->setValue(ntime);
+  initNotificationsTime_ = ntime;
 
   // settings_get_config 只含 custom 补丁,不含合并后的共享默认;
   // 空 = 未打补丁,显示控件默认值
@@ -120,14 +148,24 @@ bool GeneralPage::save() {
     changed = true;
   }
 
-  // weasel 侧(注释总开关):同样有变化才写;先 reload 防 StylePage 旧树覆写
-  if (hints != initCommentHints_) {
+  // weasel 侧(注释总开关/提示):同样有变化才写;先 reload 防 StylePage 旧树覆写
+  const bool notify = notifications_->isChecked();
+  const int notifyTime = notificationsTime_->value();
+  if (hints != initCommentHints_ || notify != initNotifications_ ||
+      notifyTime != initNotificationsTime_) {
     api_->load_settings(bangkeStyle_);
-    api_->customize_int(bangkeStyle_, "style/comment_font_point",
-                        hints ? 14 : 0);
+    if (hints != initCommentHints_)
+      api_->customize_int(bangkeStyle_, "style/comment_font_point",
+                          hints ? 14 : 0);
+    if (notify != initNotifications_)
+      api_->customize_bool(bangkeStyle_, "show_notifications", notify);
+    if (notifyTime != initNotificationsTime_)
+      api_->customize_int(bangkeStyle_, "show_notifications_time", notifyTime);
     if (!api_->save_settings(bangkeStyle_))
       return false;
     initCommentHints_ = hints;
+    initNotifications_ = notify;
+    initNotificationsTime_ = notifyTime;
     changed = true;
   }
   return changed;

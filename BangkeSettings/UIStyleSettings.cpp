@@ -195,66 +195,140 @@ void UIStyleSettings::SetHorizontal(bool value) {
   api_->customize_bool(settings_, "style/horizontal", value);
 }
 
-// 共享 weasel.yaml 的 style:→layout: 块整表(显示"当前生效值"的默认基线)
-static std::map<std::string, int> ScanSharedLayout() {
-  std::map<std::string, int> result;
+static void StripYamlComment(std::string& val) {
+  const auto hash = val.find('#');
+  if (hash != std::string::npos)
+    val = val.substr(0, hash);
+  val.erase(0, val.find_first_not_of(" \t"));
+  if (val.empty())
+    return;
+  val.erase(val.find_last_not_of(" \t\r\n") + 1);
+}
+
+// 共享 weasel.yaml 的 style: 块整表(显示"当前生效值"的默认基线)。
+// 嵌套一层的子块展平成 "子块/键"(现只有 layout:)。
+static std::map<std::string, std::string> ScanSharedStyle() {
+  std::map<std::string, std::string> result;
   std::ifstream ifs(wtou8(BangkeSharedDataPath().wstring()) + "\\weasel.yaml");
   if (!ifs.good())
     return result;
   std::string line;
-  bool inStyle = false, inLayout = false;
+  bool inStyle = false;
+  std::string sub;
   while (std::getline(ifs, line)) {
     if (line.rfind("style:", 0) == 0) {
       inStyle = true;
       continue;
     }
     if (inStyle && !line.empty() && line[0] != ' ' && line[0] != '#')
-      inStyle = false;
+      break;  // style 块结束
     if (!inStyle)
       continue;
-    if (line.rfind("  layout:", 0) == 0) {
-      inLayout = true;
-      continue;
-    }
-    if (inLayout && line.size() > 4 && line[0] == ' ' && line[1] == ' ' &&
-        line[2] == ' ' && line[3] == ' ') {
+    if (line.size() > 2 && line[0] == ' ' && line[1] == ' ' && line[2] != ' ' &&
+        line[2] != '#') {
       const auto colon = line.find(':');
-      if (colon != std::string::npos) {
-        std::string key = line.substr(4, colon - 4);
-        std::string val = line.substr(colon + 1);
-        const auto hash = val.find('#');
-        if (hash != std::string::npos)
-          val = val.substr(0, hash);
-        val.erase(val.find_last_not_of(" \t\r\n") + 1);
-        try {
-          result[key] = val.empty() ? 0 : std::stoi(val);
-        } catch (...) {
-        }
+      if (colon == std::string::npos)
+        continue;
+      std::string val = line.substr(colon + 1);
+      StripYamlComment(val);
+      if (val.empty()) {
+        sub = line.substr(2, colon - 2);  // 子块头
+      } else {
+        sub.clear();
+        result[line.substr(2, colon - 2)] = val;
       }
       continue;
     }
-    if (inLayout)
-      break;  // layout 块结束(回到 2 空格键)
+    if (!sub.empty() && line.size() > 4 && line[0] == ' ' && line[1] == ' ' &&
+        line[2] == ' ' && line[3] == ' ' && line[4] != ' ') {
+      const auto colon = line.find(':');
+      if (colon == std::string::npos)
+        continue;
+      std::string val = line.substr(colon + 1);
+      StripYamlComment(val);
+      if (!val.empty())
+        result[sub + "/" + line.substr(4, colon - 4)] = val;
+    }
   }
   return result;
 }
 
-int UIStyleSettings::GetLayoutInt(const std::string& key, int fallback) {
-  // 补丁优先;未打补丁则用共享默认;再兜底代码默认
+// 补丁优先;未打补丁则用共享默认;再兜底代码默认
+static bool PatchRaw(RimeCustomSettings* settings,
+                     RimeLeversApi* api,
+                     const std::string& key,
+                     std::string* out) {
+  RimeConfig config = {0};
+  if (!api->settings_get_config(settings, &config))
+    return false;
+  char buffer[MAX_PATH] = {0};
+  if (!rime_get_api()->config_get_string(&config, ("style/" + key).c_str(),
+                                         buffer, sizeof(buffer)))
+    return false;
+  *out = buffer;
+  return true;
+}
+
+static std::string SharedStyleValue(const std::string& key) {
+  const auto shared = ScanSharedStyle();
+  auto it = shared.find(key);
+  return it == shared.end() ? std::string() : it->second;
+}
+
+int UIStyleSettings::GetStyleInt(const std::string& key, int fallback) {
+  std::string raw;
+  if (!PatchRaw(settings_, api_, key, &raw))
+    raw = SharedStyleValue(key);
+  if (raw.empty())
+    return fallback;
+  try {
+    return std::stoi(raw);
+  } catch (...) {
+    return fallback;
+  }
+}
+
+void UIStyleSettings::SetStyleInt(const std::string& key, int value) {
+  api_->customize_int(settings_, ("style/" + key).c_str(), value);
+}
+
+bool UIStyleSettings::GetStyleBool(const std::string& key, bool fallback) {
   RimeConfig config = {0};
   if (api_->settings_get_config(settings_, &config)) {
-    int v = 0;
-    if (rime_get_api()->config_get_int(
-            &config, ("style/layout/" + key).c_str(), &v))
-      return v;
+    Bool v = fallback ? True : False;
+    if (rime_get_api()->config_get_bool(&config, ("style/" + key).c_str(), &v))
+      return v != False;
   }
-  const auto shared = ScanSharedLayout();
-  auto it = shared.find(key);
-  return it != shared.end() ? it->second : fallback;
+  const std::string raw = SharedStyleValue(key);
+  if (raw.empty())
+    return fallback;
+  return raw == "true" || raw == "yes" || raw == "on" || raw == "1";
+}
+
+void UIStyleSettings::SetStyleBool(const std::string& key, bool value) {
+  api_->customize_bool(settings_, ("style/" + key).c_str(), value);
+}
+
+std::string UIStyleSettings::GetStyleString(const std::string& key,
+                                            const std::string& fallback) {
+  std::string raw;
+  if (PatchRaw(settings_, api_, key, &raw))
+    return raw;
+  const std::string shared = SharedStyleValue(key);
+  return shared.empty() ? fallback : shared;
+}
+
+void UIStyleSettings::SetStyleString(const std::string& key,
+                                     const std::string& value) {
+  api_->customize_string(settings_, ("style/" + key).c_str(), value.c_str());
+}
+
+int UIStyleSettings::GetLayoutInt(const std::string& key, int fallback) {
+  return GetStyleInt("layout/" + key, fallback);
 }
 
 void UIStyleSettings::SetLayoutInt(const std::string& key, int value) {
-  api_->customize_int(settings_, ("style/layout/" + key).c_str(), value);
+  SetStyleInt("layout/" + key, value);
 }
 
 bool UIStyleSettings::HasCustomScheme() {

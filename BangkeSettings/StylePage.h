@@ -6,7 +6,9 @@
 
 #include <map>
 
+class QAbstractButton;
 class QComboBox;
+class QLineEdit;
 class QPushButton;
 class QSlider;
 class QSpinBox;
@@ -36,9 +38,25 @@ class StylePage : public QWidget {
 
   UIStyleSettings settings_;
   QComboBox* schemeCombo_ = nullptr;
+  // 深色模式用的配色。首项「跟随浅色」数据为空串——服务端拿空名去查方案查不到,
+  // 自然落回浅色,与"没设过"同义
+  QComboBox* darkSchemeCombo_ = nullptr;
   SchemePreviewWidget* preview_ = nullptr;
   QSpinBox* fontSize_ = nullptr;
   QComboBox* layoutCombo_ = nullptr;
+
+  // 泛化的 style 键绑定:控件挂上键就能被 load/save 自动照顾,不必逐个写成员和分支
+  struct StyleControl {
+    enum Kind { Bool, Int, Text, Choice } kind = Bool;
+    std::string key;
+    QWidget* widget = nullptr;
+    std::string init;  // 载入时的值,保存时只写变了的
+  };
+  void bindBool(const char* key, QAbstractButton* w);
+  void bindInt(const char* key, QSpinBox* w);
+  void bindText(const char* key, QLineEdit* w);
+  void bindChoice(const char* key, QComboBox* w);
+  std::vector<StyleControl> styleControls_;
 
   // 布局微调:键名 → 控件
   struct LayoutSpin {

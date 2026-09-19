@@ -26,9 +26,13 @@ class GeneralPage : public QWidget {
   QComboBox* shiftL_ = nullptr;
   QComboBox* shiftR_ = nullptr;
   ToggleSwitch* commentHints_ = nullptr;
+  ToggleSwitch* notifications_ = nullptr;
+  QSpinBox* notificationsTime_ = nullptr;
   // 载入时的原值(Shift 空串 = custom yaml 无此键);保存只写有变化的键
   int initPs_ = 0;
   QString initShiftL_;
   QString initShiftR_;
   bool initCommentHints_ = false;
+  bool initNotifications_ = false;
+  int initNotificationsTime_ = 0;
 };
