@@ -148,6 +148,15 @@ if %build_rime% == 1 (
   if not exist librime\build.bat (
     git submodule update --init --recursive
   )
+  rem 插件是 librime/plugins/CMakeLists.txt 扫目录自动接入的:源码不在就只有目录名,
+  rem rime.dll 会静默编成没有 AI 的样子,直到用户发现候选栏再无 AI。
+  rem 注意这里查的是 CMakeLists.txt 而非目录——librime 里 plugins/ai-predict 记的是
+  rem 符号链接,Windows 检出后会退化成一个内容为路径的普通文件。
+  if not exist librime\plugins\ai-predict\CMakeLists.txt (
+    echo [build.bat] librime\plugins\ai-predict 里没有插件源码。
+    echo [build.bat] 先跑 scripts\fetch-ai-predict.ps1 铺料,否则本次编出的 rime.dll 不含 AI 预测。
+    exit /b 1
+  )
   cd %BANGKE_ROOT%\librime
   rem clean cache before building
   for %%a in ( build dist lib ^

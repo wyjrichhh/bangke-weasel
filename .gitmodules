@@ -1,6 +1,9 @@
 [submodule "librime"]
 	path = librime
 	url = https://github.com/wyjrichhh/bangke-librime.git
+	# AI 插件不在 librime 内:plugins/ai-predict 或是指向仓库外克隆的符号链接,
+	# 或由构建前的铺料脚本换成真目录。两种情况都让 submodule 工作区变脏,忽略即可
+	ignore = dirty
 [submodule "plum"]
 	path = plum
 	url = https://github.com/rime/plum.git
