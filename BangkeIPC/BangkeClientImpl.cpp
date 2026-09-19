@@ -44,7 +44,9 @@ void ClientImpl::_InitializeClientInfo() {
 }
 
 bool ClientImpl::Connect(ServerLauncher const& launcher) {
-  return channel.Connect();
+  const bool ok = channel.Connect();
+  BangkeDiagTrace(std::string("ClientImpl::Connect -> ") + (ok ? "ok" : "FAILED"));
+  return ok;
 }
 
 void ClientImpl::Disconnect() {
@@ -58,8 +60,10 @@ void ClientImpl::ShutdownServer() {
 }
 
 bool ClientImpl::ProcessKeyEvent(KeyEvent const& keyEvent) {
-  if (!_Active())
+  if (!_Active()) {
+    BangkeDiagTrace("ProcessKeyEvent: dropped, not active");
     return false;
+  }
 
   LRESULT ret =
       _SendMessage(BANGKE_IPC_PROCESS_KEY_EVENT, keyEvent, session_id);
@@ -159,12 +163,15 @@ void ClientImpl::SetAsciiMode(bool ascii) {
 }
 
 void ClientImpl::StartSession() {
-  if (_Active() && Echo())
+  if (_Active() && Echo()) {
+    BangkeDiagTrace("StartSession: already active, reused");
     return;
+  }
 
   _WriteClientInfo();
   UINT ret = _SendMessage(BANGKE_IPC_START_SESSION, 0, 0);
   session_id = ret;
+  BangkeDiagTrace("StartSession: START_SESSION -> id=" + std::to_string(ret));
 }
 
 void ClientImpl::EndSession() {
@@ -183,10 +190,16 @@ void ClientImpl::EndMaintenance() {
 }
 
 bool ClientImpl::Echo() {
-  if (!_Active())
+  if (!_Active()) {
+    BangkeDiagTrace("Echo: not active (connected=" +
+                    std::string(channel.Connected() ? "1" : "0") +
+                    " sid=" + std::to_string(session_id) + ")");
     return false;
+  }
 
   UINT serverEcho = _SendMessage(BANGKE_IPC_ECHO, 0, session_id);
+  BangkeDiagTrace("Echo: sent sid=" + std::to_string(session_id) +
+                  " got=" + std::to_string(serverEcho));
   return (serverEcho == session_id);
 }
 

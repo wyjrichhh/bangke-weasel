@@ -364,6 +364,7 @@ void BangkeTSF::_StopSnapshotListener() {
 static unsigned int retry = 0;
 
 bool BangkeTSF::_EnsureServerConnected() {
+  BangkeDiagTrace("_EnsureServerConnected: enter retry=" + std::to_string(retry));
   if (!m_client.Echo()) {
     _Reconnect();
     retry++;
@@ -402,7 +403,9 @@ bool BangkeTSF::_EnsureServerConnected() {
       }
       retry = 0;
     }
-    return (m_client.Echo() != 0);
+    const bool ok = (m_client.Echo() != 0);
+    BangkeDiagTrace(std::string("_EnsureServerConnected: -> ") + (ok ? "ok" : "FALSE"));
+    return ok;
   } else {
     return true;
   }

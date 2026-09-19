@@ -88,6 +88,8 @@ int main(int argc, char* argv[]) {
       case Mode::Install:
         // 首部署:先补 AI 接线与模型,再部署使其生效
         configurator.EnsureAiDefaults();
+        // 同时把它加进用户的输入法列表——注册那一步不会做,而升级是先卸后装
+        configurator.EnsureInputMethodRegistered();
         ret = configurator.UpdateWorkspace();
         break;
       case Mode::Sync:
