@@ -148,6 +148,11 @@ if %build_rime% == 1 (
   if not exist librime\build.bat (
     git submodule update --init --recursive
   )
+  rem mac 上打的 tar 会带 AppleDouble 元数据(._*),解包后混进插件源码目录,被各插件
+  rem CMakeLists.txt 的源码 glob 当 .cc 收进去,必然编译失败且报的是语法错,查起来
+  rem 离题很远。幂等:没有匹配就什么都不做。
+  del /f /q /s "librime\plugins\._*" >nul 2>&1
+
   rem 插件是 librime/plugins/CMakeLists.txt 扫目录自动接入的:源码不在就只有目录名,
   rem rime.dll 会静默编成没有 AI 的样子,直到用户发现候选栏再无 AI。
   rem 注意这里查的是 CMakeLists.txt 而非目录——librime 里 plugins/ai-predict 记的是
