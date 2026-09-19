@@ -46,6 +46,7 @@ $rime = Get-Item "$pf\rime.dll" -ErrorAction SilentlyContinue
 Check "rime.dll 存在" ([bool]$rime) $(if ($rime) { $rime.LastWriteTime } else { '缺失' })
 Check "rime.dll 含 ai-predict 插件" (FindBytes "$pf\rime.dll" 'ai_predict_translator') "组件注册名"
 Check "rime.dll 含在途标记" (FindBytes "$pf\rime.dll" 'ai_predict/pending') "插件用它在推理在途时请前端重排"
+Check "rime.dll 含 lua 插件" (FindBytes "$pf\rime.dll" 'lua_translator') "雾凇拼音的日期/农历/数字全靠它"
 $tsf = Get-Item 'C:\Windows\System32\bangke.dll' -ErrorAction SilentlyContinue
 Check "System32\bangke.dll 存在" ([bool]$tsf) $(if ($tsf) { $tsf.LastWriteTime } else { '缺失' })
 Check "bangke.dll 含快照读取" (FindBytes 'C:\Windows\System32\bangke.dll' 'Local\BangkeSnapEvt_' -Wide) "共享内存事件名"

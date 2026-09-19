@@ -71,6 +71,28 @@ powershell -File scripts\fetch-ai-predict.ps1 -Source D:\ai.bundle -Ref <branch>
 `build.bat rime` 会检查 `librime\plugins\ai-predict\CMakeLists.txt`（查文件而非目录，
 正是为了识破退化的符号链接），不在就直接失败而不是编出个没有 AI 的版本。
 
+## librime-lua 也得单独铺
+
+同一类事：`librime-lua` 同样不在 librime 仓库里，各平台各自铺（mac 上目录名叫 `lua`，
+Windows 上叫 `librime-lua`）。**雾凇拼音的日期、农历、数字、计算器等组件全是 lua
+translator，少了它 rime.dll 照样编得出来，只是那些组件全部加载失败** —— 症状是那些功能
+静默消失，而不是报错。
+
+`build.bat rime` 现在按「`librime\plugins` 下有没有名字带 lua 的目录」挡一道。这台机器上
+那份在 `C:\dev\weasel\librime\plugins\librime-lua`（公开树的检出里带着），搬过来即可：
+
+```powershell
+robocopy C:\dev\weasel\librime\plugins\librime-lua C:\dev\bangke\librime\plugins\librime-lua /E
+```
+
+## 增量构建的坑：不要直接调 librime\build.bat
+
+外层 `build.bat` 会把 `lib` / `build` / `dist` 和各个 deps 的 `build` 目录改名成
+`<名>_x64` 藏起来（`:stash_build push`），下次构建先弹回来（`pop`），这样依赖库不用重编。
+**直接调 `librime\build.bat` 会绕过弹出那一步**，此时 `lib` 是空的，cmake 报的是
+`Could not find glog library` —— 看着像环境坏了，其实是构建的暂存机制。要增量就照旧走
+`build.bat rime`。
+
 ## 构建序列
 
 ```bat

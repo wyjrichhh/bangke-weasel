@@ -162,6 +162,17 @@ if %build_rime% == 1 (
     echo [build.bat] 先跑 scripts\fetch-ai-predict.ps1 铺料,否则本次编出的 rime.dll 不含 AI 预测。
     exit /b 1
   )
+  rem librime-lua 同样不在 librime 仓库里,各平台各自铺(名字 mac 上叫 lua、Windows 上叫
+  rem librime-lua,所以按名字里带 lua 找)。雾凇拼音的日期/农历/数字等 lua_translator 全
+  rem 靠它;少了它 rime.dll 照样编得出来,只是那些组件全部加载失败——与 AI 插件同一类
+  rem 静默失败,故一并挡在这里。
+  set BANGKE_LUA_PLUGIN=
+  for /d %%d in (librime\plugins\*lua*) do set BANGKE_LUA_PLUGIN=%%d
+  if not defined BANGKE_LUA_PLUGIN (
+    echo [build.bat] librime\plugins 下没有 lua 插件。
+    echo [build.bat] 雾凇拼音依赖它,少了它 rime.dll 里不会有 lua_translator。
+    exit /b 1
+  )
   cd %BANGKE_ROOT%\librime
   rem clean cache before building
   for %%a in ( build dist lib ^
