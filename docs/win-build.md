@@ -80,6 +80,27 @@ powershell -File scripts\fetch-ai-predict.ps1 -Source D:\ai.bundle -Ref <branch>
 `build.bat rime` 会检查 `librime\plugins\ai-predict\CMakeLists.txt`（查文件而非目录，
 正是为了识破退化的符号链接），不在就直接失败而不是编出个没有 AI 的版本。
 
+## CTranslate2（AI 插件的推理后端）
+
+插件静态链接 CT2，而 `CTRANSLATE2_ROOT` 是 `build.bat` 写死的
+`C:\dev\ct2-install\lib\ctranslate2.lib` 在不在来决定的。缺了它，要么插件配置阶段报
+`CTranslate2 not found`，要么退回插件自带的 `make deps`（要拉 `deps/CTranslate2` 子模块
+再整个重编一遍）。
+
+这台机器上那份是 CT2 **4.7.1** 从源码静态编的，配置如下：
+
+```bat
+cmake -S C:\dev\ct2-src -B C:\dev\ct2-src\build -G "Visual Studio 17 2022" -A x64 ^
+  -DCMAKE_INSTALL_PREFIX=C:/dev/ct2-install ^
+  -DBUILD_SHARED_LIBS=OFF ^
+  -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ^
+  -DOPENMP_RUNTIME=NONE -DWITH_CUDA=OFF -DWITH_MKL=OFF -DWITH_DNNL=OFF -DWITH_RUY=ON
+cmake --build C:\dev\ct2-src\build --config Release --target install
+```
+
+两处不能改：`/MT` 必须与 rime.dll 一致（静态链接进同一个 DLL，运行库混用会炸）；
+`WITH_RUY=ON` 才能让 int8 模型真的按 int8 跑。
+
 ## librime-lua 也得单独铺
 
 同一类事：`librime-lua` 同样不在 librime 仓库里，各平台各自铺（mac 上目录名叫 `lua`，
@@ -87,11 +108,12 @@ Windows 上叫 `librime-lua`）。**雾凇拼音的日期、农历、数字、�
 translator，少了它 rime.dll 照样编得出来，只是那些组件全部加载失败** —— 症状是那些功能
 静默消失，而不是报错。
 
-`build.bat rime` 现在按「`librime\plugins` 下有没有名字带 lua 的目录」挡一道。这台机器上
-那份在 `C:\dev\weasel\librime\plugins\librime-lua`（公开树的检出里带着），搬过来即可：
+`build.bat rime` 现在按「`librime\plugins` 下有没有名字带 lua 的目录」挡一道。铺料走上游，
+不要从别的检出里拷（那条路依赖旁边恰好有那么一棵树）：
 
-```powershell
-robocopy C:\dev\weasel\librime\plugins\librime-lua C:\dev\bangke\librime\plugins\librime-lua /E
+```bat
+git clone https://github.com/hchunhui/librime-lua librime\plugins\librime-lua
+git -C librime\plugins\librime-lua checkout ad1e4a6
 ```
 
 ## 增量构建的坑：不要直接调 librime\build.bat
