@@ -70,6 +70,9 @@ struct RequestHandler {
                                EatLine eat) {
     return FALSE;
   }
+  // 按键前光标处的文本,客户端随按键请求捎来。空串表示"这次读不到",消费方必须回退
+  // 到别的上下文来源,而不是当成"文档到此为止"
+  virtual void SetClientContext(DWORD session_id, std::wstring const& text) {}
   virtual void CommitComposition(DWORD session_id) {}
   virtual void ClearComposition(DWORD session_id) {}
   virtual void SelectCandidateOnCurrentPage(size_t index, DWORD session_id) {}
@@ -135,6 +138,8 @@ class Client {
   bool Echo();
   // 请求服务处理按键消息
   bool ProcessKeyEvent(KeyEvent const& keyEvent);
+  // 同上,并捎上按键前光标处的文本,供 AI 插件当上下文用
+  bool ProcessKeyEvent(KeyEvent const& keyEvent, std::wstring const& context);
   // 上屏正在編輯的文字
   bool CommitComposition();
   // 清除正在編輯的文字

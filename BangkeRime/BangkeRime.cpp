@@ -624,6 +624,24 @@ void BangkeRimeHandler::OnDeferredEvent(int event,
   }
 }
 
+// 把客户端读到的「光标前文本」交给插件。插件在自己的 Compose 阶段就要用，所以必须在
+// process_key 之前写进去——调用点见 ServerImpl::OnKeyEvent。
+//
+// 值没变就不写：Context::set_property 每次都会发通知，插件据此重跑一趟推理，而打字
+// 过程中这段文本绝大多数时候根本不动。
+void BangkeRimeHandler::SetClientContext(BangkeSessionId ipc_id,
+                                         const std::wstring& text) {
+  auto it = m_session_status_map.find(ipc_id);
+  if (it == m_session_status_map.end() || !it->second.session_id)
+    return;
+  std::string utf8 = wtou8(text);
+  if (utf8 == it->second.published_context)
+    return;
+  it->second.published_context = utf8;
+  rime_api->set_property(it->second.session_id, "ai_predict/client_context",
+                         utf8.c_str());
+}
+
 bool BangkeRimeHandler::_IsAiPending(RimeSessionId session_id) {
   if (!session_id)
     return false;

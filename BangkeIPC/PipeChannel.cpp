@@ -143,10 +143,13 @@ void PipeChannelBase::_Receive(HANDLE pipe, LPVOID msg, size_t rec_len) {
           ? _IoWithTimeout(pipe, false, msg, (DWORD)rec_len,
                            kPipeIoTimeoutMs, &lread)
           : (::ReadFile(pipe, msg, rec_len, &lread, NULL) != FALSE);
+  auto ctx = _GetContext();
+  // 消息头与请求体写在同一段字节里:只有消息比 rec_len 长(短读)才说明这次带了体。
+  // 没带体时缓冲区里留着更早那一次请求的内容,拿它解析会读到过期数据
+  ctx->body_received = !success;
   if (!success) {
     _ThrowIfNot(ERROR_MORE_DATA);
 
-    auto ctx = _GetContext();
     memset(ctx->buffer.get(), 0, buff_size);
     success =
         io_overlapped
@@ -158,7 +161,7 @@ void PipeChannelBase::_Receive(HANDLE pipe, LPVOID msg, size_t rec_len) {
       _ThrowLastError;
     }
   }
-  _GetContext()->has_body = false;
+  ctx->has_body = false;
 }
 
 HANDLE PipeChannelBase::_ConnectServerPipe(std::wstring& pn) {

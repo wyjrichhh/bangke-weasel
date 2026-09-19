@@ -39,6 +39,8 @@ struct SessionStatus {
   // 上一帧送出去的候选数。纯推理模式下菜单空着就意味着「还没有预测可确认」，
   // 空格据此决定吞不吞（见 ProcessKeyEvent）
   size_t menu_candidates = 0;
+  // 已经交给插件的上下文。值没变就不重写：set_property 每次都会触发插件重跑推理
+  std::string published_context;
 };
 typedef std::map<DWORD, SessionStatus> SessionStatusMap;
 typedef DWORD BangkeSessionId;
@@ -86,6 +88,8 @@ class BangkeRimeHandler : public bangke::RequestHandler {
   virtual void SetOption(BangkeSessionId ipc_id,
                          const std::string& opt,
                          bool val);
+  void SetClientContext(BangkeSessionId ipc_id,
+                        const std::wstring& text) override;
   virtual void UpdateColorTheme(BOOL darkMode);
   void SetEventWindow(HWND wnd) override;
   void OnDeferredEvent(int event, uintptr_t rime_session_id) override;

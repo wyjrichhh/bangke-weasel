@@ -18,6 +18,8 @@ class ClientImpl {
   void EndMaintenance();
   bool Echo();
   bool ProcessKeyEvent(KeyEvent const& keyEvent);
+  // context 是按键前光标处的文本,随请求捎给服务端(见 Client::ProcessKeyEvent)
+  bool ProcessKeyEvent(KeyEvent const& keyEvent, std::wstring const& context);
   bool CommitComposition();
   bool ClearComposition();
   bool SelectCandidateOnCurrentPage(size_t index);

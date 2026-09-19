@@ -8,7 +8,10 @@ static bangke::KeyEvent prevKeyEvent;
 static BOOL prevfEaten = FALSE;
 static int keyCountToSimulate = 0;
 
-void BangkeTSF::_ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
+void BangkeTSF::_ProcessKeyEvent(ITfContext* pContext,
+                                 WPARAM wParam,
+                                 LPARAM lParam,
+                                 BOOL* pfEaten) {
   // when _IsKeyboardDisabled don't eat the key,
   // when keyboard closable and keyboard closed, don't eat the key
   if ((_isToOpenClose && !_IsKeyboardOpen()) || _IsKeyboardDisabled()) {
@@ -34,7 +37,14 @@ void BangkeTSF::_ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
       else if (ke.keycode == ibus::Down)
         ke.keycode = ibus::Up;
     }
-    *pfEaten = (BOOL)m_client.ProcessKeyEvent(ke);
+    // 光标前的文本要赶在按键进 rime 之前送到:插件在自己的 Compose 阶段就要用它。
+    // 抬键不读——读一次要开同步 edit session,而抬键不产生新的推理;不读时干脆不带
+    // 这个字段,服务端便不会拿它去覆盖已有的值。
+    if (ke.mask & ibus::RELEASE_MASK)
+      *pfEaten = (BOOL)m_client.ProcessKeyEvent(ke);
+    else
+      *pfEaten =
+          (BOOL)m_client.ProcessKeyEvent(ke, _ReadClientContext(pContext));
 
     if (ke.keycode == ibus::Caps_Lock) {
       if (prevKeyEvent.keycode == ibus::Caps_Lock && prevfEaten == TRUE &&
@@ -91,7 +101,7 @@ STDMETHODIMP BangkeTSF::OnTestKeyDown(ITfContext* pContext,
     *pfEaten = TRUE;
     return S_OK;
   }
-  _ProcessKeyEvent(wParam, lParam, pfEaten);
+  _ProcessKeyEvent(pContext, wParam, lParam, pfEaten);
   _UpdateComposition(pContext);
   if (*pfEaten)
     _fTestKeyDownPending = TRUE;
@@ -107,7 +117,7 @@ STDMETHODIMP BangkeTSF::OnKeyDown(ITfContext* pContext,
     _fTestKeyDownPending = FALSE;
     *pfEaten = TRUE;
   } else {
-    _ProcessKeyEvent(wParam, lParam, pfEaten);
+    _ProcessKeyEvent(pContext, wParam, lParam, pfEaten);
     _UpdateComposition(pContext);
   }
   return S_OK;
@@ -122,7 +132,7 @@ STDMETHODIMP BangkeTSF::OnTestKeyUp(ITfContext* pContext,
     *pfEaten = TRUE;
     return S_OK;
   }
-  _ProcessKeyEvent(wParam, lParam, pfEaten);
+  _ProcessKeyEvent(pContext, wParam, lParam, pfEaten);
   _UpdateComposition(pContext);
   if (*pfEaten)
     _fTestKeyUpPending = TRUE;
@@ -138,7 +148,7 @@ STDMETHODIMP BangkeTSF::OnKeyUp(ITfContext* pContext,
     _fTestKeyUpPending = FALSE;
     *pfEaten = TRUE;
   } else {
-    _ProcessKeyEvent(wParam, lParam, pfEaten);
+    _ProcessKeyEvent(pContext, wParam, lParam, pfEaten);
     if (!_async_edit)
       _UpdateComposition(pContext);
   }

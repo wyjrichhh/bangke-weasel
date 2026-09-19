@@ -133,6 +133,81 @@ void BangkeTSF::_EndComposition(com_ptr<ITfContext> pContext,
   }
 }
 
+/* 读光标前的文本,交给 AI 插件当上下文 */
+class CReadClientContextEditSession : public CEditSession {
+ public:
+  CReadClientContextEditSession(com_ptr<BangkeTSF> pTextService,
+                                com_ptr<ITfContext> pContext,
+                                com_ptr<ITfComposition> pComposition,
+                                std::wstring* out)
+      : CEditSession(pTextService, pContext),
+        _pComposition(pComposition),
+        _out(out) {}
+
+  /* ITfEditSession */
+  STDMETHODIMP DoEditSession(TfEditCookie ec);
+
+ private:
+  com_ptr<ITfComposition> _pComposition;
+  std::wstring* _out;
+};
+
+STDMETHODIMP CReadClientContextEditSession::DoEditSession(TfEditCookie ec) {
+  // 与 mac 端读的长度一致;够模型认出句子,又不至于每次按键都搬一大段
+  const LONG kMaxChars = 64;
+  _out->clear();
+
+  TF_SELECTION selection;
+  ULONG nSelection = 0;
+  if (FAILED(_pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &selection,
+                                     &nSelection)) ||
+      nSelection == 0)
+    return S_OK;
+
+  // 组字过程中选区落在组合内部,从那儿往前读会把我们自己的编码当成上文读回来,
+  // 所以有组合时改从组合起点往前读
+  com_ptr<ITfRange> range;
+  if (_pComposition != nullptr) {
+    ITfRange* pRange = nullptr;
+    if (SUCCEEDED(_pComposition->GetRange(&pRange)) && pRange != nullptr)
+      range.Attach(pRange);
+  }
+  if (range == nullptr)
+    range.Attach(selection.range);  // 接管 GetSelection 交出来的引用
+  else
+    selection.range->Release();
+
+  if (FAILED(range->Collapse(ec, TF_ANCHOR_START)))
+    return S_OK;
+
+  LONG shifted = 0;
+  if (FAILED(range->ShiftStart(ec, -kMaxChars, &shifted, nullptr)))
+    return S_OK;
+
+  WCHAR buffer[65] = {0};
+  ULONG got = 0;
+  if (FAILED(range->GetText(ec, TF_ANCHOR_START, buffer, kMaxChars, &got)))
+    return S_OK;
+  _out->assign(buffer, got);
+  return S_OK;
+}
+
+std::wstring BangkeTSF::_ReadClientContext(ITfContext* pContext) {
+  std::wstring text;
+  if (pContext == nullptr)
+    return text;
+  auto* session = new CReadClientContextEditSession(
+      this, pContext, _pComposition, &text);
+  if (session == nullptr)
+    return text;
+  HRESULT hr = S_OK;
+  // 同步会话:同一个按键里马上就要把它交给服务端,异步拿不到
+  pContext->RequestEditSession(_tfClientId, session, TF_ES_SYNC | TF_ES_READ,
+                               &hr);
+  session->Release();
+  return text;
+}
+
 /* Get Text Extent */
 class CGetTextExtentEditSession : public CEditSession {
  public:

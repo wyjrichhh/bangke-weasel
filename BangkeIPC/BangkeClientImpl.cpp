@@ -66,6 +66,20 @@ bool ClientImpl::ProcessKeyEvent(KeyEvent const& keyEvent) {
   return ret != 0;
 }
 
+bool ClientImpl::ProcessKeyEvent(KeyEvent const& keyEvent,
+                                 std::wstring const& context) {
+  if (!_Active())
+    return false;
+
+  // 走 _WriteClientInfo 同款的行式请求体:消息头之后跟若干 "键=值" 行,以 "." 收尾。
+  // 换行会破坏按行解析,得转义(服务端用 unescape_string 还原)。
+  channel << L"session.client_context=" << escape_string(context).c_str()
+          << L"\n.\n";
+  LRESULT ret =
+      _SendMessage(BANGKE_IPC_PROCESS_KEY_EVENT, keyEvent, session_id);
+  return ret != 0;
+}
+
 bool ClientImpl::CommitComposition() {
   if (!_Active())
     return false;
@@ -224,6 +238,11 @@ void Client::ShutdownServer() {
 
 bool Client::ProcessKeyEvent(KeyEvent const& keyEvent) {
   return m_pImpl->ProcessKeyEvent(keyEvent);
+}
+
+bool Client::ProcessKeyEvent(KeyEvent const& keyEvent,
+                             std::wstring const& context) {
+  return m_pImpl->ProcessKeyEvent(keyEvent, context);
 }
 
 bool Client::CommitComposition() {

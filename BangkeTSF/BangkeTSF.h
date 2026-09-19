@@ -179,7 +179,10 @@ class BangkeTSF : public ITfTextInputProcessorEx,
 
   BOOL _InitKeyEventSink();
   void _UninitKeyEventSink();
-  void _ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten);
+  void _ProcessKeyEvent(ITfContext* pContext,
+                        WPARAM wParam,
+                        LPARAM lParam,
+                        BOOL* pfEaten);
 
   BOOL _InitPreservedKey();
   void _UninitPreservedKey();
@@ -191,6 +194,11 @@ class BangkeTSF : public ITfTextInputProcessorEx,
   void _EnableLanguageBar(BOOL enable);
 
   BOOL _InsertText(com_ptr<ITfContext> pContext, const std::wstring& ext);
+
+  // 读光标(组字时取组合起点)之前的文本,喂给 AI 插件的上下文窗口。
+  // 要同步 edit session,只能在按键下沉路径上调。读不到返回空串——消费方据此回退到
+  // 别的上下文来源,而不是当成"文档到此为止"
+  std::wstring _ReadClientContext(ITfContext* pContext);
 
   void _DeleteCandidateList();
 

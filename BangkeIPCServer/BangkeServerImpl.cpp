@@ -218,11 +218,45 @@ DWORD ServerImpl::OnEndSession(BANGKE_IPC_COMMAND uMsg,
   return m_pRequestHandler->RemoveSession(lParam);
 }
 
+// 请求体是若干 "键=值" 行,以单独一行的 "." 收尾——与 _WriteClientInfo 同款。
+// 返回是否找到该键:键在而值为空,与键根本不在,是两回事——前者是"这次读不到",
+// 消费方要回退;后者是"这条请求没带这个信息",不该动已有的值。
+static bool ReadRequestLine(LPWSTR buffer,
+                            const std::wstring& key,
+                            std::wstring* out) {
+  if (!buffer)
+    return false;
+  wbufferstream bs(buffer, BANGKE_IPC_BUFFER_LENGTH);
+  std::wstring line;
+  const std::wstring prefix = key + L"=";
+  while (bs.good()) {
+    std::getline(bs, line);
+    if (!bs.good())
+      break;
+    if (line == L".")
+      break;
+    if (line.rfind(prefix, 0) == 0) {
+      *out = unescape_string(line.substr(prefix.size()));
+      return true;
+    }
+  }
+  return false;
+}
+
 DWORD ServerImpl::OnKeyEvent(BANGKE_IPC_COMMAND uMsg,
                              DWORD wParam,
                              DWORD lParam) {
   if (!m_pRequestHandler /* || !m_pSharedMemory*/)
     return 0;
+
+  // 光标前的文本要在 process_key 之前交给 rime:插件在自己的 Compose 阶段就要用它。
+  // 请求体随按键一起到,这里先消费掉再转发按键。
+  // 只在这次请求真带了体时才读:不带体时缓冲区里是更早那一次请求的残留。
+  std::wstring context;
+  if (channel->RequestHadBody() &&
+      ReadRequestLine(reinterpret_cast<LPWSTR>(channel->ReceiveBuffer()),
+                      L"session.client_context", &context))
+    m_pRequestHandler->SetClientContext(lParam, context);
 
   auto eat = [this](std::wstring& msg) -> bool {
     *channel << msg;

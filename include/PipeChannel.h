@@ -16,6 +16,10 @@ class PipeChannelBase {
     std::unique_ptr<char[]> buffer;
     std::unique_ptr<Stream> write_stream;
     bool has_body;
+    // 上一次收到的请求是否带体。消息头与请求体写在同一段字节里,只有短读(消息比
+    // sizeof(Msg) 长)才说明有体——没有体时缓冲区里是更早那一次请求留下的内容,
+    // 拿它解析会得到过期数据
+    bool body_received = false;
 
     ChannelContext(size_t bs)
         : buffer(std::make_unique<char[]>(bs)), has_body(false) {}
@@ -142,6 +146,9 @@ class PipeChannel : public PipeChannelBase {
   char* SendBuffer() const { return _GetContext()->buffer.get() + _MsgSize; }
 
   char* ReceiveBuffer() const { return _GetContext()->buffer.get() + _ResSize; }
+
+  // 上一次收到的请求是否带体。RequestHadBody 为假时 ReceiveBuffer 里是过期内容
+  bool RequestHadBody() const { return _GetContext()->body_received; }
 
   template <typename _TyHandler>
   bool HandleResponseData(_TyHandler const& handler) {
