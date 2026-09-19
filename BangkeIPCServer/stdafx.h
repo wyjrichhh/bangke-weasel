@@ -17,4 +17,7 @@
 #include <wtl/atlapp.h>
 #include <wtl/atlframe.h>
 
+#include <boost/interprocess/streams/bufferstream.hpp>
 #include <boost/thread.hpp>
+
+using boost::interprocess::wbufferstream;

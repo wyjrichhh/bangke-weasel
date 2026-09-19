@@ -192,20 +192,19 @@ STDMETHODIMP CReadClientContextEditSession::DoEditSession(TfEditCookie ec) {
   return S_OK;
 }
 
-std::wstring BangkeTSF::_ReadClientContext(ITfContext* pContext) {
-  std::wstring text;
+void BangkeTSF::_RefreshClientContext(com_ptr<ITfContext> pContext) {
   if (pContext == nullptr)
-    return text;
+    return;
   auto* session = new CReadClientContextEditSession(
-      this, pContext, _pComposition, &text);
+      this, pContext, _pComposition, &_clientContext);
   if (session == nullptr)
-    return text;
+    return;
   HRESULT hr = S_OK;
-  // 同步会话:同一个按键里马上就要把它交给服务端,异步拿不到
-  pContext->RequestEditSession(_tfClientId, session, TF_ES_SYNC | TF_ES_READ,
-                               &hr);
+  // 必须异步:按键回调期间 TSF 已给文档加了读锁,同步请求会被判 TF_E_SYNCHRONOUS。
+  // 会话持有 BangkeTSF 的引用,所以 _clientContext 不会在会话跑之前失效
+  pContext->RequestEditSession(_tfClientId, session,
+                               TF_ES_ASYNCDONTCARE | TF_ES_READ, &hr);
   session->Release();
-  return text;
 }
 
 /* Get Text Extent */

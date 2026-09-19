@@ -195,10 +195,13 @@ class BangkeTSF : public ITfTextInputProcessorEx,
 
   BOOL _InsertText(com_ptr<ITfContext> pContext, const std::wstring& ext);
 
-  // 读光标(组字时取组合起点)之前的文本,喂给 AI 插件的上下文窗口。
-  // 要同步 edit session,只能在按键下沉路径上调。读不到返回空串——消费方据此回退到
-  // 别的上下文来源,而不是当成"文档到此为止"
-  std::wstring _ReadClientContext(ITfContext* pContext);
+  // 刷新"光标前的文本"缓存,喂给 AI 插件的上下文窗口。
+  //
+  // 只能异步读:按键回调期间 TSF 已给文档加了读锁,同步 edit session 会被判
+  // TF_E_SYNCHRONOUS 而永远拿不到。所以按键时发的是上一次刷新缓存下来的值——它正好
+  // 是"这次按键之前"的文档状态,就是要的那个。
+  void _RefreshClientContext(com_ptr<ITfContext> pContext);
+  std::wstring _clientContext;
 
   void _DeleteCandidateList();
 

@@ -38,13 +38,15 @@ void BangkeTSF::_ProcessKeyEvent(ITfContext* pContext,
         ke.keycode = ibus::Up;
     }
     // 光标前的文本要赶在按键进 rime 之前送到:插件在自己的 Compose 阶段就要用它。
-    // 抬键不读——读一次要开同步 edit session,而抬键不产生新的推理;不读时干脆不带
-    // 这个字段,服务端便不会拿它去覆盖已有的值。
-    if (ke.mask & ibus::RELEASE_MASK)
+    // 发的是上一次刷新缓存下来的值——它正是"这次按键之前"的文档状态。发完再刷新,
+    // 供下一次按键用(读只能异步,见 _RefreshClientContext)。
+    // 抬键不带这个字段:抬键不产生新推理,服务端便不会拿它去覆盖已有的值。
+    if (ke.mask & ibus::RELEASE_MASK) {
       *pfEaten = (BOOL)m_client.ProcessKeyEvent(ke);
-    else
-      *pfEaten =
-          (BOOL)m_client.ProcessKeyEvent(ke, _ReadClientContext(pContext));
+    } else {
+      *pfEaten = (BOOL)m_client.ProcessKeyEvent(ke, _clientContext);
+      _RefreshClientContext(pContext);
+    }
 
     if (ke.keycode == ibus::Caps_Lock) {
       if (prevKeyEvent.keycode == ibus::Caps_Lock && prevfEaten == TRUE &&

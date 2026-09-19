@@ -49,6 +49,10 @@ STDMETHODIMP BangkeTSF::DoEditSession(TfEditCookie ec) {
     }
   }
 
+  // 刚上屏的文字改了光标前的文档内容,刷新缓存——否则下一次推理用的还是上屏前的文本
+  if (ok && _committed)
+    _RefreshClientContext(_pEditSessionContext);
+
   if (ok && !compositionEnded)
     _UpdateCompositionWindow(_pEditSessionContext);
   // Keep the existing candidate window alive during top-word input, but
