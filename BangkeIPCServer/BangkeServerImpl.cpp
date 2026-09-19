@@ -203,12 +203,14 @@ DWORD ServerImpl::OnStartSession(BANGKE_IPC_COMMAND uMsg,
                                  DWORD lParam) {
   if (!m_pRequestHandler)
     return 0;
-  return m_pRequestHandler->AddSession(
+  const DWORD sid = m_pRequestHandler->AddSession(
       reinterpret_cast<LPWSTR>(channel->ReceiveBuffer()),
       [this](std::wstring& msg) -> bool {
         *channel << msg;
         return true;
       });
+  BangkeDiagTrace("OnStartSession: AddSession -> " + std::to_string(sid));
+  return sid;
 }
 
 DWORD ServerImpl::OnEndSession(BANGKE_IPC_COMMAND uMsg,

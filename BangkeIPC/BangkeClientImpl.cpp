@@ -222,10 +222,20 @@ bool ClientImpl::_WriteClientInfo() {
 LRESULT ClientImpl::_SendMessage(BANGKE_IPC_COMMAND Msg,
                                  DWORD wParam,
                                  DWORD lParam) {
+  // 原来这里是 catch (DWORD) { return 0; }:管道出任何事都吞成 0，上层看到的就是
+  // "会话号 0"，跟"服务端拒绝建会话"长得一模一样。打点区分开。
   try {
     PipeMessage req{Msg, wParam, lParam};
-    return channel.Transact(req);
-  } catch (DWORD /* ex */) {
+    const LRESULT r = channel.Transact(req);
+    BangkeDiagTrace("send cmd=" + std::to_string((int)Msg) + " -> " +
+                    std::to_string((long long)r));
+    return r;
+  } catch (DWORD ex) {
+    BangkeDiagTrace("send cmd=" + std::to_string((int)Msg) + " threw DWORD " +
+                    std::to_string(ex));
+    return 0;
+  } catch (...) {
+    BangkeDiagTrace("send cmd=" + std::to_string((int)Msg) + " threw other");
     return 0;
   }
 }
