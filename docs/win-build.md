@@ -118,6 +118,30 @@ build.bat settings  :: Qt 设置程序
 错），再查插件源码在不在。主件构建时若 PATH 里没有 msbuild，会用 VS 自带的 vswhere
 定位 —— sshd 会话不会刷新 PATH，`DEVTOOLS_PATH` 里也没有它。
 
+## 打包：MSI 与单文件 exe
+
+```bat
+installer\build_installer.bat              :: 图形安装器 UI -> output\BangkeInstaller.exe
+installer\build_msi.bat                    :: -> output\BangkeSetup-<版本>-x64.msi
+powershell -File installer\make_boot.ps1   :: -> dist\BangkeSetup-<版本>-win64.exe
+```
+
+**要发给用户的是最后那个 exe**：单文件，双击即装。`make_boot.ps1` 把图形安装器、最新
+MSI、Qt 运行库、VC 运行库连同 dxcompiler/dxil 一起嵌进一个原生引导壳。三步有先后：
+`make_boot` 是从 `output\` 收载荷的，所以前面几件得先生成。
+
+**`dxcompiler.dll` / `dxil.dll` 不在仓库里，也不在 Qt 的 `bin` 里。** `windeployqt` 默认
+会铺它们（`--no-system-dxc-compiler` 才是关掉；`--no-system-d3d-compiler` 只管
+`d3dcompiler_47.dll`），但 sshd 会话下这次没铺出来 —— 它按环境去找系统的 DXC，找不到就
+静默跳过。`make_boot.ps1` 的注释写着「漏了即启动即崩」，所以从 Windows SDK 取一份：
+
+```powershell
+$sdk = "C:\Program Files (x86)\Windows Kits\10\bin\<SDK 版本>\x64"
+Copy-Item "$sdk\dxcompiler.dll","$sdk\dxil.dll" output\
+```
+
+漏了的症状是安装器 UI 一启动就崩，而不是构建报错。
+
 ## 开发态安装（免 NSIS）
 
 ```powershell
