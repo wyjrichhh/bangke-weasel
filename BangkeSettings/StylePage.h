@@ -47,7 +47,9 @@ class StylePage : public QWidget {
 
   // 泛化的 style 键绑定:控件挂上键就能被 load/save 自动照顾,不必逐个写成员和分支
   struct StyleControl {
-    enum Kind { Bool, Int, Text, Choice } kind = Bool;
+    // 作用域枚举:不加域的 Bool 会与 rime 那边的 `typedef int Bool` 撞名
+    enum class Kind { Bool, Int, Text, Choice };
+    Kind kind = Kind::Bool;
     std::string key;
     QWidget* widget = nullptr;
     std::string init;  // 载入时的值,保存时只写变了的

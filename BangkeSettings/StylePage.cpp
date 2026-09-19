@@ -438,19 +438,19 @@ void StylePage::onCustomEdited() {
 }
 
 void StylePage::bindBool(const char* key, QAbstractButton* w) {
-  styleControls_.push_back({StyleControl::Bool, key, w, {}});
+  styleControls_.push_back({StyleControl::Kind::Bool, key, w, {}});
 }
 
 void StylePage::bindInt(const char* key, QSpinBox* w) {
-  styleControls_.push_back({StyleControl::Int, key, w, {}});
+  styleControls_.push_back({StyleControl::Kind::Int, key, w, {}});
 }
 
 void StylePage::bindText(const char* key, QLineEdit* w) {
-  styleControls_.push_back({StyleControl::Text, key, w, {}});
+  styleControls_.push_back({StyleControl::Kind::Text, key, w, {}});
 }
 
 void StylePage::bindChoice(const char* key, QComboBox* w) {
-  styleControls_.push_back({StyleControl::Choice, key, w, {}});
+  styleControls_.push_back({StyleControl::Kind::Choice, key, w, {}});
 }
 
 void StylePage::load() {
@@ -502,28 +502,28 @@ void StylePage::forceLoad() {
   // 通用绑定:读 = 补丁 ⊕ 共享默认,补丁与共享都没有就用控件的构造默认值
   for (auto& c : styleControls_) {
     switch (c.kind) {
-      case StyleControl::Bool: {
+      case StyleControl::Kind::Bool: {
         auto* box = static_cast<QAbstractButton*>(c.widget);
         const bool v = settings_.GetStyleBool(c.key, box->isChecked());
         box->setChecked(v);
         c.init = v ? "1" : "0";
         break;
       }
-      case StyleControl::Int: {
+      case StyleControl::Kind::Int: {
         auto* spin = static_cast<QSpinBox*>(c.widget);
         const int v = settings_.GetStyleInt(c.key, spin->value());
         spin->setValue(v);
         c.init = std::to_string(v);
         break;
       }
-      case StyleControl::Text: {
+      case StyleControl::Kind::Text: {
         auto* edit = static_cast<QLineEdit*>(c.widget);
         edit->setText(QString::fromStdString(settings_.GetStyleString(
             c.key, edit->text().toStdString())));
         c.init = edit->text().toStdString();
         break;
       }
-      case StyleControl::Choice: {
+      case StyleControl::Kind::Choice: {
         auto* combo = static_cast<QComboBox*>(c.widget);
         const QString v = QString::fromStdString(settings_.GetStyleString(
             c.key, combo->currentData().toString().toStdString()));
@@ -602,7 +602,7 @@ bool StylePage::save() {
   }
   for (auto& c : styleControls_) {
     switch (c.kind) {
-      case StyleControl::Bool: {
+      case StyleControl::Kind::Bool: {
         auto* box = static_cast<QAbstractButton*>(c.widget);
         const std::string now = box->isChecked() ? "1" : "0";
         if (now == c.init)
@@ -611,7 +611,7 @@ bool StylePage::save() {
         changed = true;
         break;
       }
-      case StyleControl::Int: {
+      case StyleControl::Kind::Int: {
         auto* spin = static_cast<QSpinBox*>(c.widget);
         const std::string now = std::to_string(spin->value());
         if (now == c.init)
@@ -620,7 +620,7 @@ bool StylePage::save() {
         changed = true;
         break;
       }
-      case StyleControl::Text: {
+      case StyleControl::Kind::Text: {
         auto* edit = static_cast<QLineEdit*>(c.widget);
         const std::string now = edit->text().toStdString();
         if (now == c.init)
@@ -629,7 +629,7 @@ bool StylePage::save() {
         changed = true;
         break;
       }
-      case StyleControl::Choice: {
+      case StyleControl::Kind::Choice: {
         auto* combo = static_cast<QComboBox*>(c.widget);
         const std::string now = combo->currentData().toString().toStdString();
         if (now == c.init)
