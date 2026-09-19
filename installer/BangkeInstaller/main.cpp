@@ -111,16 +111,24 @@ static QString MsiLogPath(const QString& msi) { return msi + ".log"; }
 
 static QStringList BuildArgs(const MsiJob& job) {
   const QString log = QDir::toNativeSeparators(MsiLogPath(job.msiPath));
+  // 修复与卸载的对象是"已经装上的那个产品",所以按它的 ProductCode 走,不能拿随包这份
+  // MSI 的路径当 target:WiX 没写死 ProductCode,每次构建都是一个新 GUID,/x <这份包的
+  // 路径> 卸的是"这份包代表的产品",而它还没装上 —— 报 1605(该操作只对当前已安装的产品
+  // 有效),用户看到的就是"点卸载报错、产品还在"。
+  // 安装/升级则必须走 /i <路径>:MajorUpgrade 按 UpgradeCode 接管旧版本。
+  const QString installed = job.productCode.isEmpty()
+                                ? QDir::toNativeSeparators(job.msiPath)
+                                : job.productCode;
   QStringList args;
   switch (job.op) {
     case MsiJob::Install:
       args << "/i" << QDir::toNativeSeparators(job.msiPath);
       break;
     case MsiJob::Repair:
-      args << "/f" << QDir::toNativeSeparators(job.msiPath);
+      args << "/f" << installed;
       break;
     case MsiJob::Uninstall:
-      args << "/x" << QDir::toNativeSeparators(job.msiPath);
+      args << "/x" << installed;
       break;
   }
   args << "/qn" << "/l*v" << log;
