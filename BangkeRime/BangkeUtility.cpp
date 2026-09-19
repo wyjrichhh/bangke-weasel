@@ -84,10 +84,14 @@ int BangkeEnsureUserSeeds() {
       L"    context_window_size: 10\n"
       L"    debounce_ms: 200\n"
       L"    max_tokens: 64\n"
-      L"    quality: 0.00\n"
       L"    target_index: 1\n"
       L"    search_range: 10\n"
-      L"    min_hanzi: 2\n";
+      L"    min_hanzi: 2\n"
+      L"    # 是否剥掉模型输出里的标点。默认 true 与上线前行为一致;关掉可保留\n"
+      L"    # 模型吐出的句读(如「，我们」),代价是上下文复读的标点残留也会进候选\n"
+      L"    filter_punctuation: true\n"
+      L"    # 纯推理模式:候选只来自模型,词库词不参与,候选栏只剩一条不带序号的预测\n"
+      L"    ai_only: false\n";
 
   // 全新安装的方案集:明月 + 雾凇(对齐 Linux 版),仅缺文件时写入
   // 列序即默认方案序:雾凇打头,全新安装落在雾凇上
@@ -143,10 +147,14 @@ int BangkeEnsureUserSeeds() {
       L"    context_window_size: 10\n"
       L"    debounce_ms: 200\n"
       L"    max_tokens: 64\n"
-      L"    quality: 0.00\n"
       L"    target_index: 1\n"
       L"    search_range: 10\n"
-      L"    min_hanzi: 2\n";
+      L"    min_hanzi: 2\n"
+      L"    # 是否剥掉模型输出里的标点。默认 true 与上线前行为一致;关掉可保留\n"
+      L"    # 模型吐出的句读(如「，我们」),代价是上下文复读的标点残留也会进候选\n"
+      L"    filter_punctuation: true\n"
+      L"    # 纯推理模式:候选只来自模型,词库词不参与,候选栏只剩一条不带序号的预测\n"
+      L"    ai_only: false\n";
   const std::filesystem::path iceCustom = user_dir / L"rime_ice.custom.yaml";
   if (!std::filesystem::exists(iceCustom, ec) ||
       std::filesystem::file_size(iceCustom, ec) == 0) {

@@ -31,6 +31,12 @@ inline std::wstring getUsername() {
   return res;
 }
 
+// 纯 AI 推理（ai_predict/ai_only）下当作普通字符收进 composition 的那批键：数字与
+// 这几个标点。keysym 恰好等于各自的 ASCII 码——ConvertKeyEvent 不认这些虚拟键，会
+// 退回 ToUnicodeEx 取实际字符（见 BangkeTSF/KeyEvent.cpp）。
+// 服务端的按键路由与设置页扩展 speller/alphabet 必须用同一份，故放在共享头里。
+constexpr const char* kAiOnlyExtraInput = "1234567890,.;:!?";
+
 // data directories
 std::filesystem::path BangkeSharedDataPath();
 // 用户目录种子(方案表/AI 接线/模型),设置程序 /install 与服务端首启调用

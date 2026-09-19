@@ -34,6 +34,11 @@ struct SessionStatus {
   bool __synced;
   RimeSessionId session_id;
   std::string client_app;  // 部署后按它恢复 ipc 会话
+  // 纯 AI 推理（ai_predict/ai_only）：菜单只有模型那一条，词库不参与
+  bool ai_only = false;
+  // 上一帧送出去的候选数。纯推理模式下菜单空着就意味着「还没有预测可确认」，
+  // 空格据此决定吞不吞（见 ProcessKeyEvent）
+  size_t menu_candidates = 0;
 };
 typedef std::map<DWORD, SessionStatus> SessionStatusMap;
 typedef DWORD BangkeSessionId;

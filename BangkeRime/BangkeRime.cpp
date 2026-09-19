@@ -348,6 +348,26 @@ void BangkeRimeHandler::UpdateColorTheme(BOOL darkMode) {
   m_ui->style() = get_session_status(m_active_session).style;
 }
 
+namespace {
+// 供纯推理模式判断"这一下是不是普通字符键"。Shift 不算修饰：! ? : 本来就要 Shift 打
+bool IsPlainKeyDown(const bangke::KeyEvent& keyEvent) {
+  constexpr UINT kDisqualifying =
+      ibus::RELEASE_MASK | ibus::CONTROL_MASK | ibus::ALT_MASK |
+      ibus::SUPER_MASK | ibus::META_MASK;
+  return (keyEvent.mask & kDisqualifying) == 0;
+}
+
+bool IsAiOnlyExtraInput(UINT keycode) {
+  return keycode > 0 && keycode < 0x80 &&
+         strchr(kAiOnlyExtraInput, (char)keycode) != nullptr;
+}
+
+bool HasRimeInput(RimeApi* api, RimeSessionId session_id) {
+  const char* input = api->get_input(session_id);
+  return input && *input;
+}
+}  // namespace
+
 BOOL BangkeRimeHandler::ProcessKeyEvent(KeyEvent keyEvent,
                                             BangkeSessionId ipc_id,
                                             EatLine eat) {
@@ -357,6 +377,40 @@ BOOL BangkeRimeHandler::ProcessKeyEvent(KeyEvent keyEvent,
     return FALSE;
   ++s_key_serial;  // 本次按键的响应帧与之后的推送帧按此排序
   RimeSessionId session_id = to_session_id(ipc_id);
+  SessionStatus& session_status = get_session_status(ipc_id);
+
+  // 下列两条只在纯 AI 推理模式下改道，普通模式一个字符都不碰。
+  //
+  // 空格：该模式下菜单只有模型那一条，组字期间没有候选可确认。照常交给 rime，它会
+  // 把原始拼音直接上屏——而那些拼音还会进 commit_history，污染下一次推理的上下文。
+  // 菜单空着就没有可确认的东西，吞掉即可。要求正在组字：没在组字时菜单同样是空的，
+  // 那时吞空格会破坏普通打字。
+  //
+  // 数字与标点：菜单活着时它们各有本职——selector 拿数字选词、punctuator 把标点直接
+  // 上屏、key_binder 先一步用 , . [ ] 翻页。把字符直接追加进 composition 就绕开了整条
+  // 链，那三处都不必改配置。同样要求正在组字，好让这些字符在没组字时仍是它们自己。
+  if (session_status.ai_only && IsPlainKeyDown(keyEvent)) {
+    if (keyEvent.keycode == ibus::space && session_status.menu_candidates == 0 &&
+        HasRimeInput(rime_api, session_id)) {
+      _Respond(ipc_id, eat);
+      _UpdateUI(ipc_id);
+      m_active_session = ipc_id;
+      return TRUE;
+    }
+    if (IsAiOnlyExtraInput(keyEvent.keycode) &&
+        HasRimeInput(rime_api, session_id)) {
+      // get_input 的指针指进 Context 内部的字符串，set_input 会把它换掉，先拷出来
+      std::string next = rime_api->get_input(session_id);
+      next += (char)keyEvent.keycode;
+      // set_input 自己会触发 update_notifier → Compose，候选栏随之更新，不必再排一趟
+      rime_api->set_input(session_id, next.c_str());
+      _Respond(ipc_id, eat);
+      _UpdateUI(ipc_id);
+      m_active_session = ipc_id;
+      return TRUE;
+    }
+  }
+
   Bool handled = rime_api->process_key(session_id, keyEvent.keycode,
                                        expand_ibus_modifier(keyEvent.mask));
   // vim_mode when keydown only
@@ -870,11 +924,21 @@ void BangkeRimeHandler::_LoadSchemaSpecificSettings(
   RimeConfig config;
   if (!rime_api->schema_open(schema_id.c_str(), &config))
     return;
+  SessionStatus& session_status = get_session_status(ipc_id);
+  // 取生效配置里的值(含该方案的 custom 补丁),没有这个键就是关
+  Bool ai_only = false;
+  session_status.ai_only =
+      rime_api->config_get_bool(&config, "ai_predict/ai_only", &ai_only) &&
+      !!ai_only;
   _UpdateShowNotifications(&config);
   m_ui->style() = m_base_style;
   _UpdateUIStyle(&config, m_ui, false);
-  SessionStatus& session_status = get_session_status(ipc_id);
   session_status.style = m_ui->style();
+  // 纯推理模式只出一条不带序号的预测,序号留着是噪音。序号的存在与否由
+  // label_font_point 门控(见 Layout.cpp 的 labelFontValid):置 0 后标签矩形宽度塌成 0,
+  // 布局不再为它留位、绘制对空矩形直接返回。改的是本会话的 style 副本,不波及别的会话
+  if (session_status.ai_only)
+    session_status.style.label_font_point = 0;
   UIStyle& style = session_status.style;
   // load schema color style config
   const int BUF_SIZE = 255;
@@ -1101,6 +1165,9 @@ bool BangkeRimeHandler::_RespondFrame(BangkeSessionId ipc_id,
     const bool has_candidates = rime_ctx.menu.num_candidates > 0;
     if (has_candidates)
       _GetCandidateInfo(ctx.cinfo, rime_ctx);
+    // 记下这一帧的候选数：纯推理模式下菜单空着等于「模型还没答」，
+    // 空格据此决定吞不吞（见 ProcessKeyEvent）
+    session_status.menu_candidates = ctx.cinfo.candies.size();
 
     if (rime_ctx.composition.length > 0) {
       const char* preedit = rime_ctx.composition.preedit;
