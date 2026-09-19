@@ -160,7 +160,10 @@ void BangkeRimeHandler::_Initialize(bool ignore_deployer) {
 
   LOG(INFO) << "Initializing la rime.";
   rime_api->initialize(NULL);
-  if (rime_api->start_maintenance(/*full_check = */ False)) {
+  const Bool started = rime_api->start_maintenance(/*full_check = */ False);
+  BangkeDiagTrace(std::string("_Initialize: start_maintenance -> ") +
+                  (started ? "TRUE(changes detected)" : "false(no changes)"));
+  if (started) {
     m_disabled = true;
     rime_api->join_maintenance_thread();
   }
@@ -216,6 +219,8 @@ DWORD BangkeRimeHandler::AddSession(LPWSTR buffer, EatLine eat) {
   if (m_disabled) {
     DLOG(INFO) << "Trying to resume service.";
     EndMaintenance();
+    BangkeDiagTrace(std::string("AddSession: after EndMaintenance, disabled=") +
+                    (m_disabled ? "1 -> returning 0" : "0"));
     if (m_disabled)
       return 0;
   }
