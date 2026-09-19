@@ -79,12 +79,19 @@
     <CustomAction Id="StopServer" Directory="System64Folder"
                   ExeCommand="&quot;[System64Folder]taskkill.exe&quot; /f /im BangkeServer.exe"
                   Return="ignore" Execute="deferred" Impersonate="no" />
+    <!--
+      regsvr32 必须以安装用户身份跑：DllRegisterServer 里的 RegisterProfile 是
+      「把输入法加进当前用户的输入列表」的 API，以 SYSTEM 身份跑就加进了 SYSTEM 的列表
+      —— 结果是机器层面全注册齐了（InprocServer32、LanguageProfile 的 Enable=1 都在），
+      但用户 Win+Space 切不过去，表现成"装完只能打英文"。
+      延迟 CA + Impersonate="yes" 仍带管理员令牌，写 System32/HKLM 不受影响。
+    -->
     <CustomAction Id="UnregisterTSF" Directory="System64Folder"
                   ExeCommand="&quot;[System64Folder]regsvr32.exe&quot; /u /s &quot;[System64Folder]bangke.dll&quot;"
-                  Return="ignore" Execute="deferred" Impersonate="no" />
+                  Return="ignore" Execute="deferred" Impersonate="yes" />
     <CustomAction Id="RegisterTSF" Directory="System64Folder"
                   ExeCommand="&quot;[System64Folder]regsvr32.exe&quot; /s &quot;[System64Folder]bangke.dll&quot;"
-                  Return="check" Execute="deferred" Impersonate="no" />
+                  Return="check" Execute="deferred" Impersonate="yes" />
     <!-- 首部署写用户目录，必须以安装用户身份跑，否则落到 systemprofile -->
     <CustomAction Id="FirstDeploy" Directory="INSTALLDIR"
                   ExeCommand="&quot;[INSTALLDIR]BangkeSettings.exe&quot; /install"
