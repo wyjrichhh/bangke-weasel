@@ -211,11 +211,19 @@ cscript.exe render.js bangke.props %BANGKE_PROJECT_PROPERTIES%
 
 del msbuild*.log
 
+rem msbuild 只在交互式 VS 提示符的 PATH 里,sshd 会话不会刷新 PATH,DEVTOOLS_PATH 也
+rem 没带上它。先看 PATH,找不到就用 VS 自带的 vswhere 从安装目录里取。
+set MSBUILD=msbuild.exe
+where msbuild.exe >nul 2>&1
+if errorlevel 1 (
+  for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe 2^>nul`) do set "MSBUILD=%%i"
+)
+
 if defined SDKVER set build_sdk_option=/p:WindowsTargetPlatformVersion=%SDKVER%
 if not defined SDKVER set build_sdk_option=
 
 
-msbuild.exe bangke.sln %build_option% /p:Configuration=%build_config% /p:Platform="x64" /fl2 %build_sdk_option%
+"%MSBUILD%" bangke.sln %build_option% /p:Configuration=%build_config% /p:Platform="x64" /fl2 %build_sdk_option%
 if errorlevel 1 goto error
 
 :after_bangke
