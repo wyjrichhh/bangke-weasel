@@ -131,7 +131,11 @@ static QStringList BuildArgs(const MsiJob& job) {
       args << "/x" << installed;
       break;
   }
-  args << "/qn" << "/l*v" << log;
+  // REBOOT=ReallySuppress:没有它,当 MSI 需要重启才能完成文件替换时(用户的
+  // System32\bangke.dll 被 explorer/msedge 这些 TSF 宿主占着,替换要等重启),
+  // msiexec 会直接重启机器 —— 用户看到的是"装完毫无提示就重启了"。
+  // 重启或注销与否由用户在完成页自己决定(见 msiFinished)。
+  args << "/qn" << "/l*v" << log << "REBOOT=ReallySuppress";
   return args;
 }
 
@@ -722,7 +726,11 @@ class MainWindow : public QWidget {
     if (m_proc) { m_proc->deleteLater(); m_proc = nullptr; }
     switchPage(finishPage_);
 
-    const bool ok = (r == 0);
+    // 1641 = ERROR_SUCCESS_REBOOT_INITIATED、3010 = ERROR_SUCCESS_REBOOT_REQUIRED：
+    // 都是"成功了，只是要重启才彻底生效"，不是失败。原先只认 0，会把它们显示成
+    // "操作失败 (代码 0x00000669)"，用户看到的是装好了却报错。
+    const bool rebootPending = (r == 1641 || r == 3010);
+    const bool ok = (r == 0 || rebootPending);
     if (ok) {
       QString title, detail;
       switch (m_job.op) {
@@ -742,6 +750,12 @@ class MainWindow : public QWidget {
             title = QStringLiteral(u"安装完成");
             detail = QStringLiteral(u"蚌壳拼音已就绪，按 Win+空格 切换到蚌壳拼音开始使用。");
           }
+          if (rebootPending) {
+            // 输入法的 dll 被各个正在运行的程序加载着，替换不了的那一份要等本次登录
+            // 结束才落位。直说，并给一个按钮让用户自己决定什么时候注销——不替他决定。
+            detail += QStringLiteral(
+                u"\n部分文件正被运行中的程序占用，注销一次即可完成更新。");
+          }
           break;
       }
       m_finishTitle->setText(title);
@@ -753,7 +767,13 @@ class MainWindow : public QWidget {
     }
     m_check->start(ok);
     m_launchCheck->setVisible(ok && m_job.op != MsiJob::Uninstall);
-    m_logoffBtn->setVisible(ok && m_job.op == MsiJob::Uninstall);
+    // 注销与否由用户点，不代他决定：装/卸载后有文件要等登录结束才落位时，把这个按钮
+    // 摆出来并说明原因
+    if (ok)
+      m_logoffBtn->setText(rebootPending
+                               ? QStringLiteral(u"立即注销（让更新生效）")
+                               : QStringLiteral(u"立即注销（清除输入法残留）"));
+    m_logoffBtn->setVisible(ok && (m_job.op == MsiJob::Uninstall || rebootPending));
     m_openLogBtn->setVisible(!ok && !m_msiPath.isEmpty());
   }
 
