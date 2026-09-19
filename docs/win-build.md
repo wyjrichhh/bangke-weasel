@@ -2,6 +2,43 @@
 
 Phase 0 基线：weasel 0.17.4（d73f629），2026-09-04 全量构建 + 打字验证通过。
 
+## 代码放哪：公开 / 私有是两套
+
+| 目录 | 克隆自 | 用途 |
+|---|---|---|
+| `C:\dev\bangke` | `wyjrichhh/bangke-weasel`（私有） | **本仓库的构建就在这里** |
+| `C:\dev\weasel` | `wyjrichhh/weasel`（公开 fork） | 只作参考：查公开版、比打包脚本。**不要在这里构建本仓库** |
+
+两边在 `dfff7ae` 处分岔：私有仓库是从那儿往下走的 `main`，公开那份停在原地。三个私有
+仓库克隆都要凭据，这台机器上没配，所以代码靠 bundle 传：
+
+```bash
+# 本机（mac）
+git -C bangke-weasel bundle create /tmp/bk.bundle main     # 注意别写 ^<某提交>
+scp /tmp/bk.bundle bangke@192.168.101.17:C:/dev/
+```
+
+```powershell
+# 17 机器
+git -C C:\dev\bangke init
+git -C C:\dev\bangke fetch C:\dev\bk.bundle main:refs/heads/main
+git -C C:\dev\bangke checkout main
+git -C C:\dev\bangke submodule init
+git -C C:\dev\bangke config submodule.librime.url <librime 的 bundle 或本地克隆>
+git -C C:\dev\bangke -c protocol.file.allow=always submodule update --init librime
+git -C C:\dev\bangke\librime submodule update --init --recursive   # deps/* 是嵌套子模块
+powershell -File C:\dev\bangke\scripts\fetch-ai-predict.ps1 -Source <插件的 bundle 或本地克隆> -Ref main
+```
+
+**bundle 别带 `^` 前置提交**：带了的只能喂给已有那段历史的仓库，空仓库会报
+`Repository lacks these prerequisite commits`。`librime` 的 `deps/*` 是嵌套子模块，
+`submodule update --init librime` 只初始化 librime 自己，少了 `--recursive` 那一步，
+构建时报的是 `deps/glog does not appear to contain CMakeLists.txt`。
+
+`env.bat` 两边是同一份 —— 仓库里没有任何地方依赖它的绝对路径（`BANGKE_ROOT` 由
+`build.bat` 取 `%CD%`），搬过去即可。`output\data`（plum 配方 + 雾凇词库 + opencc）是纯
+数据，也可以直接搬，省掉走 GitHub 那一步。
+
 ## 工具链
 
 | 组件 | 版本/路径 | 说明 |
@@ -37,7 +74,7 @@ powershell -File scripts\fetch-ai-predict.ps1 -Source D:\ai.bundle -Ref <branch>
 ## 构建序列
 
 ```bat
-cd C:\dev\weasel
+cd C:\dev\bangke
 build.bat boost     :: b2 双架构静态库，约 10 分钟
 build.bat rime      :: librime deps + rime.dll，约 30 分钟
 build.bat data opencc  :: plum 配方 + opencc 词库（走 GitHub，网络抖时重跑）
@@ -54,13 +91,13 @@ build.bat settings  :: Qt 设置程序
 
 ```powershell
 # 管理员会话；server 必须在交互桌面会话里启动，不要从 ssh 拉起
-cd C:\dev\weasel\output
+cd C:\dev\bangke\output
 Copy-Item .\bangkex64.dll C:\Windows\System32\bangke.dll -Force
 cmd /c "set TEXTSERVICE_PROFILE=hans&& C:\Windows\System32\regsvr32.exe /s C:\Windows\System32\bangke.dll"
 New-Item HKLM:\SOFTWARE\Bangke -Force
-Set-ItemProperty HKLM:\SOFTWARE\Bangke BangkeRoot 'C:\dev\weasel\output'
+Set-ItemProperty HKLM:\SOFTWARE\Bangke BangkeRoot 'C:\dev\bangke\output'
 Set-ItemProperty HKLM:\SOFTWARE\Bangke ServerExecutable 'BangkeServer.exe'
-New-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' BangkeServer -PropertyType String -Value 'C:\dev\weasel\output\BangkeServer.exe' -Force
+New-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' BangkeServer -PropertyType String -Value 'C:\dev\bangke\output\BangkeServer.exe' -Force
 ```
 
 （也可直接用 `scripts/dev_install.ps1`，上面是它做的事。）首次部署**不需要**手动跑设置程序——直接启动 `BangkeServer.exe`，`Initialize()` 的 `start_maintenance` 会自动完成首次部署（编译词库约 1-3 分钟）。
