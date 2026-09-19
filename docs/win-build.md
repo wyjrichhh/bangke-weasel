@@ -179,6 +179,39 @@ New-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' BangkeSer
 
 （也可直接用 `scripts/dev_install.ps1`，上面是它做的事。）首次部署**不需要**手动跑设置程序——直接启动 `BangkeServer.exe`，`Initialize()` 的 `start_maintenance` 会自动完成首次部署（编译词库约 1-3 分钟）。
 
+## 排查：装完只能打英文，切不过去
+
+先分清是哪一层：
+
+**一、输入列表里有没有它。** 看用户的语言列表：
+
+```powershell
+Get-WinUserLanguageList | ForEach-Object { $_.LanguageTag + " : " + ($_.InputMethodTips -join ", ") }
+```
+
+zh-Hans-CN 那行应该含 `0804:{9D44BD49-B647-4010-9ADC-16DA253F5CCA}{ED00E0F3-7EB2-4D43-898F-E2DA5ACD15CA}`。
+没有的话，是 TSF 注册没落到当前用户头上（`RegisterProfile` 是"往当前用户的列表里加"的
+API，以 SYSTEM 身份调就加进了 SYSTEM 的列表；机器层面看着一切正常——`InprocServer32`
+在、`LanguageProfile` 的 `Enable=1` 也在）。补一次即可，**要在你的桌面会话里、带管理员
+权限**：
+
+```powershell
+C:\Windows\System32\regsvr32.exe /s C:\Windows\System32\bangke.dll
+```
+
+注销一次生效。新版安装包已把 `RegisterTSF` 改成 `Impersonate="yes"`，不会再这样。
+
+**二、在列表里但打了还是英文。** 那是服务端的问题——服务端连不上时 `_ProcessKeyEvent`
+把按键原样放行（`*pfEaten = FALSE`）。查三件事：
+
+- `Get-Process BangkeServer` 在不在跑；
+- 它跑在哪个 session（`Select-Object SessionId`），**要与你的桌面会话一致**——RDP 下
+  特别容易错开；
+- 它启动时是不是把自己停用了：`_Initialize` 里 `rime_api->start_maintenance()` 返回真
+  （需要首部署）会置 `m_disabled`，要等一次 `EndMaintenance` 才恢复。
+
+日志在 `%TEMP%\rime.bangke`。
+
 ## 远程驱动（Mac → 17-Windows）
 
 `ssh bangke@192.168.101.17`（公钥免密）。执行 PS 用 EncodedCommand：
