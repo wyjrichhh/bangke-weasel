@@ -36,8 +36,17 @@ powershell -File C:\dev\bangke\scripts\fetch-ai-predict.ps1 -Source <插件的 b
 构建时报的是 `deps/glog does not appear to contain CMakeLists.txt`。
 
 `env.bat` 两边是同一份 —— 仓库里没有任何地方依赖它的绝对路径（`BANGKE_ROOT` 由
-`build.bat` 取 `%CD%`），搬过去即可。`output\data`（plum 配方 + 雾凇词库 + opencc）是纯
-数据，也可以直接搬，省掉走 GitHub 那一步。
+`build.bat` 取 `%CD%`），搬过去即可。
+
+`output\data`（plum 配方 + 雾凇词库 + opencc）是纯数据，可以整份搬过来，省掉走 GitHub 那
+一步。**但要注意它会让 `:build_data` 整个不跑**（`build.bat` 只按 `output\data\essay.txt`
+在不在来决定）—— 那一步顺带往 `output\` 放的 `README.txt`、`LICENSE.txt` 也就一起没了，
+而它们会被 harvest 打进 MSI。搬数据的话记得手工补：
+
+```powershell
+Copy-Item <旧树>\output\README.txt <新树>\output\
+Copy-Item <新树>\LICENSE.txt <新树>\output\
+```
 
 ## 工具链
 
