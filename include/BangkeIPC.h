@@ -39,7 +39,7 @@ enum BANGKE_IPC_COMMAND {
 // 只允许 PostMessage 本消息后立即返回，实际工作由服务端消息循环在串行线程做
 #define WM_BK_RIME_EVENT (WM_APP + 0x42)
 enum BkRimeEvent {
-  BK_EVENT_AI_REFRESH = 1,  // AI 候选就绪（属性 _refresh_ui），待推送快照
+  BK_EVENT_AI_PUMP = 1,  // 有推理在途（属性 ai_predict/pending），起泵把候选顶出来
 };
 
 namespace bangke {
@@ -92,6 +92,11 @@ struct RequestHandler {
   virtual void SetEventWindow(HWND wnd) {}
   // 在服务端消息循环（串行线程）上消费投递来的 rime 事件
   virtual void OnDeferredEvent(int event, uintptr_t rime_session_id) {}
+  // AI 泵的两半，都只在服务端消息循环线程上调用：Arm 在按键后看有没有推理在途并起
+  // 定时器，Tick 在定时器到点时重排一次。放在一个线程上是为了让 SetTimer/KillTimer
+  // 与泵的状态不被跨线程穿插
+  virtual void AiPumpArm(DWORD session_id) {}
+  virtual void AiPumpTick() {}
 };
 
 // 處理server端回應之物件

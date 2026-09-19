@@ -29,6 +29,7 @@ class ServerImpl : public CWindowImpl<ServerImpl, CWindow, ServerWinTraits>
   MESSAGE_HANDLER(WM_SETTINGCHANGE, OnColorChange)
   MESSAGE_HANDLER(WM_COMMAND, OnCommand)
   MESSAGE_HANDLER(WM_BK_RIME_EVENT, OnRimeEvent)
+  MESSAGE_HANDLER(WM_TIMER, OnTimer)
   END_MSG_MAP()
 
   LRESULT OnColorChange(UINT uMsg,
@@ -48,6 +49,7 @@ class ServerImpl : public CWindowImpl<ServerImpl, CWindow, ServerWinTraits>
                              BOOL& bHandled);
   LRESULT OnCommand(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
   LRESULT OnRimeEvent(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
+  LRESULT OnTimer(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
   DWORD OnEcho(BANGKE_IPC_COMMAND uMsg, DWORD wParam, DWORD lParam);
   DWORD OnSetAscii(BANGKE_IPC_COMMAND uMsg, DWORD wParam, DWORD lParam);
   DWORD OnStartSession(BANGKE_IPC_COMMAND uMsg, DWORD wParam, DWORD lParam);

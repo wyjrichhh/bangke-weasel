@@ -84,6 +84,9 @@ class BangkeRimeHandler : public bangke::RequestHandler {
   virtual void UpdateColorTheme(BOOL darkMode);
   void SetEventWindow(HWND wnd) override;
   void OnDeferredEvent(int event, uintptr_t rime_session_id) override;
+  // AI 泵的两半，只在服务端消息循环线程上跑（见 _StopAiPump 上方注释）
+  void AiPumpArm(DWORD ipc_id) override;
+  void AiPumpTick() override;
 
   void OnUpdateUI(std::function<void()> const& cb);
 
@@ -97,7 +100,12 @@ class BangkeRimeHandler : public bangke::RequestHandler {
                                 bool ignore_app_name = false);
   bool _ShowMessage(bangke::Context& ctx, bangke::Status& status);
   bool _Respond(BangkeSessionId ipc_id, EatLine eat, bool include_commit = true);
-  bool _RespondFrame(BangkeSessionId ipc_id, EatLine eat, bool include_commit);
+  // consume_style_sync=false 用于快照推送：那一帧走共享内存而非管道，客户端可能因
+  // 序号陈旧而丢弃它，就此退休样式同步标记会连同样式一起丢掉
+  bool _RespondFrame(BangkeSessionId ipc_id,
+                     EatLine eat,
+                     bool include_commit,
+                     bool consume_style_sync = true);
   void _ReadClientInfo(BangkeSessionId ipc_id, LPWSTR buffer);
   void _RestoreSession(BangkeSessionId ipc_id, const std::string& client_app);
   void _GetCandidateInfo(bangke::CandidateInfo& cinfo, RimeContext& ctx);
@@ -108,6 +116,10 @@ class BangkeRimeHandler : public bangke::RequestHandler {
   void _UpdateShowNotifications(RimeConfig* config, bool initialize = false);
 
   void _UpdateInlinePreeditStatus(BangkeSessionId ipc_id);
+
+  void _StopAiPump();
+  bool _IsAiPending(RimeSessionId session_id);
+  void _MaybeRequestAiPump(BangkeSessionId ipc_id, RimeSessionId session_id);
 
   RimeSessionId to_session_id(BangkeSessionId ipc_id) {
     return m_session_status_map[ipc_id].session_id;
@@ -136,6 +148,18 @@ class BangkeRimeHandler : public bangke::RequestHandler {
                        const char* message_type,
                        const char* message_value);
   void _PushAiSnapshot(uintptr_t rime_sid);
+
+  // AI 泵：插件把推理放在 worker 线程上跑完只填缓存，把候选顶进菜单必须由前端在自己
+  // 的线程上重排——worker 直接 Compose 会和按键线程在同一个 Context 上撞车（librime 的
+  // Context/Engine 不是线程安全的）。
+  //
+  // 泵只在服务端消息循环线程上起停与触发：SetTimer/KillTimer 和泵状态因此不需要跨线程
+  // 同步。单次推理实测 p50 约 90ms，但长尾到 5s+，超时给够，否则长尾预测永远等不到。
+  static constexpr UINT_PTR kAiPumpTimerId = 0x424B4149;  // 'BKAI'
+  static constexpr UINT kAiPumpIntervalMs = 150;
+  static constexpr DWORD kAiPumpTimeoutMs = 10000;
+  BangkeSessionId m_ai_pump_ipc_id = 0;
+  DWORD m_ai_pump_deadline = 0;
   static std::string m_message_type;
   static std::string m_message_value;
   static std::string m_message_label;

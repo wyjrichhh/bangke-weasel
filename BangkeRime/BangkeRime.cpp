@@ -195,6 +195,7 @@ void BangkeRimeHandler::_Initialize(bool ignore_deployer) {
 }
 
 void BangkeRimeHandler::Finalize() {
+  _StopAiPump();
   m_active_session = 0;
   m_disabled = true;
   m_session_status_map.clear();
@@ -287,6 +288,8 @@ DWORD BangkeRimeHandler::AddSession(LPWSTR buffer, EatLine eat) {
 }
 
 DWORD BangkeRimeHandler::RemoveSession(BangkeSessionId ipc_id) {
+  if (m_ai_pump_ipc_id == ipc_id)
+    _StopAiPump();
   {
     std::lock_guard<std::mutex> lock(s_snap_handles_mutex);
     auto it = s_snap_handles.find((DWORD)ipc_id);
@@ -442,6 +445,9 @@ void BangkeRimeHandler::FocusOut(DWORD param, BangkeSessionId ipc_id) {
   DLOG(INFO) << "Focus out: ipc_id = " << ipc_id;
   if (m_ui)
     m_ui->Hide();
+  // 焦点走了就没有要顶的候选栏了，别让泵继续空转
+  if (m_ai_pump_ipc_id == ipc_id)
+    _StopAiPump();
   m_active_session = 0;
 }
 
@@ -480,12 +486,14 @@ void BangkeRimeHandler::_PushAiSnapshot(uintptr_t rime_sid) {
     return;
 
   // 复用会话协商后的帧渲染(include_commit=false:get_commit 读一次即清空,
-  // 推送帧绝不携带 commit,否则会偷走按键响应的上屏文本)
+  // 推送帧绝不携带 commit,否则会偷走按键响应的上屏文本)。
+  // consume_style_sync=false:推送走共享内存,客户端可能因序号陈旧整帧丢弃,
+  // 就此退休样式同步标记会连样式一起丢掉
   std::wstring wire;
   if (!_RespondFrame(ipc_id, [&wire](std::wstring& s) -> bool {
         wire = std::move(s);
         return true;
-      }, /*include_commit=*/false) ||
+      }, /*include_commit=*/false, /*consume_style_sync=*/false) ||
       wire.empty())
     return;
 
@@ -524,11 +532,8 @@ void BangkeRimeHandler::OnNotify(void* context_object,
     return;
 
   if (!strcmp(message_type, "property")) {
-    // 插件 worker 在 Compose 完成后发 _refresh_ui（菜单已完整填充），
-    // 此刻的快照推送投递给服务端消息循环，由串行线程执行
-    if (!strncmp(message_value, "_refresh_ui=", 12) && self->m_event_wnd)
-      PostMessageW(self->m_event_wnd, WM_BK_RIME_EVENT, BK_EVENT_AI_REFRESH,
-                   (LPARAM)session_id);
+    // 属性通知里前端唯一关心的是 ai_predict/pending，但它不走这里：那是插件在
+    // Compose（按键线程）里写的，前端在 _UpdateUI 之后自己读，见 _MaybeRequestAiPump
     return;
   }
 
@@ -558,11 +563,98 @@ void BangkeRimeHandler::SetEventWindow(HWND wnd) {
 
 void BangkeRimeHandler::OnDeferredEvent(int event,
                                             uintptr_t rime_session_id) {
-  if (event == BK_EVENT_AI_REFRESH) {
-    // 消息循环线程：与管道路径共用 API 串行锁，读会话表安全
-    std::lock_guard<std::recursive_mutex> lock(BangkeRimeHandler::ApiMutex());
-    _PushAiSnapshot(rime_session_id);
+  if (event == BK_EVENT_AI_PUMP) {
+    // 这里传的是 ipc 会话号，不是 rime 会话号：泵按 ipc 号认会话，rime 会话号是
+    // 对象地址，销毁后新建的会话可能复用同一个值
+    AiPumpArm((BangkeSessionId)rime_session_id);
   }
+}
+
+bool BangkeRimeHandler::_IsAiPending(RimeSessionId session_id) {
+  if (!session_id)
+    return false;
+  char buffer[8] = {0};
+  // 值为空时 get_property 本身就返回 False，正好当作「没有推理在途」
+  if (!rime_api->get_property(session_id, "ai_predict/pending", buffer,
+                              sizeof(buffer)))
+    return false;
+  return buffer[0] == '1';
+}
+
+void BangkeRimeHandler::_MaybeRequestAiPump(BangkeSessionId ipc_id,
+                                            RimeSessionId session_id) {
+  if (!ipc_id || !m_event_wnd || !_IsAiPending(session_id))
+    return;
+  // 不能就地重排：调用点都在按键管道路径上，此刻 Context 刚被这一趟 Compose 用过，
+  // 就地再 Compose 一趟等于在 process_key 里重入。交给消息循环线程。
+  PostMessageW(m_event_wnd, WM_BK_RIME_EVENT, BK_EVENT_AI_PUMP, (LPARAM)ipc_id);
+}
+
+void BangkeRimeHandler::AiPumpArm(BangkeSessionId ipc_id) {
+  std::lock_guard<std::recursive_mutex> lock(ApiMutex());
+  if (!m_event_wnd || m_disabled)
+    return;
+  // 用 find 不用 operator[]：后者会插进一个 session_id=0 的幽灵会话
+  auto it = m_session_status_map.find(ipc_id);
+  if (it == m_session_status_map.end() || !it->second.session_id)
+    return;
+  // 已经在为该会话跑就别再 SetTimer：同 id 再设一次是重置间隔，连打快过间隔时
+  // 定时器永远等不到触发，AI 候选就再也浮不出来
+  if (m_ai_pump_ipc_id == ipc_id && m_ai_pump_deadline)
+    return;
+  m_ai_pump_ipc_id = ipc_id;
+  m_ai_pump_deadline = GetTickCount() + kAiPumpTimeoutMs;
+  SetTimer(m_event_wnd, kAiPumpTimerId, kAiPumpIntervalMs, nullptr);
+}
+
+void BangkeRimeHandler::AiPumpTick() {
+  std::lock_guard<std::recursive_mutex> lock(ApiMutex());
+  if (!m_event_wnd) {
+    _StopAiPump();
+    return;
+  }
+  // KillTimer 不会清掉已经排进消息队列的 WM_TIMER，会话可能在这之前就没了；同样用
+  // find，避免查询把幽灵会话坐实
+  auto it = m_session_status_map.find(m_ai_pump_ipc_id);
+  if (m_ai_pump_ipc_id == 0 || it == m_session_status_map.end() ||
+      !it->second.session_id || GetTickCount() >= m_ai_pump_deadline) {
+    _StopAiPump();
+    return;
+  }
+  const RimeSessionId session_id = it->second.session_id;
+  const char* input = rime_api->get_input(session_id);
+  if (!input || !*input) {
+    _StopAiPump();
+    return;
+  }
+  // 任何 option 变更都会让 ConcreteEngine::OnOptionUpdate 在调用线程上跑
+  // RefreshNonConfirmedComposition —— 正是要的那次重排，且在正确的线程上。
+  // soft_cursor 是本代码本就持有的开关，重设成同值无副作用。
+  rime_api->set_option(session_id, "soft_cursor",
+                       rime_api->get_option(session_id, "soft_cursor"));
+  // 这发 set_option 会触发 option 通知，OnNotify 把选项名写进 m_message_*。正常路径
+  // 由 _UpdateUI 清掉，泵不走那条路，自己清——留着会让下一次按键的提示气泡显示成
+  // soft_cursor，并顶掉本该走的那条显隐分支。
+  {
+    std::lock_guard<std::mutex> lock(m_notifier_mutex);
+    m_message_type.clear();
+    m_message_value.clear();
+    m_message_label.clear();
+    m_option_name.clear();
+  }
+  // 这一拍的重排可能刚好把结果算了出来（worker 在上一拍与这一拍之间落地），复查一次：
+  // 落下了就立刻推快照收工，不必再等下一拍
+  if (!_IsAiPending(session_id)) {
+    _PushAiSnapshot(session_id);
+    _StopAiPump();
+  }
+}
+
+void BangkeRimeHandler::_StopAiPump() {
+  if (m_event_wnd)
+    KillTimer(m_event_wnd, kAiPumpTimerId);
+  m_ai_pump_ipc_id = 0;
+  m_ai_pump_deadline = 0;
 }
 
 void BangkeRimeHandler::_ReadClientInfo(BangkeSessionId ipc_id,
@@ -765,6 +857,9 @@ void BangkeRimeHandler::_UpdateUI(BangkeSessionId ipc_id) {
     m_message_label.clear();
     m_option_name.clear();
   }
+
+  // 放在最后：泵要重排一遍菜单，让这一步的显示先落定
+  _MaybeRequestAiPump(ipc_id, session_id);
 }
 
 void BangkeRimeHandler::_LoadSchemaSpecificSettings(
@@ -961,7 +1056,8 @@ bool BangkeRimeHandler::_Respond(BangkeSessionId ipc_id, EatLine eat,
 // ③ 的客户端按字节取回。key_serial 暂为 0,由后续步骤引入单调序号。
 bool BangkeRimeHandler::_RespondFrame(BangkeSessionId ipc_id,
                                           EatLine eat,
-                                          bool include_commit) {
+                                          bool include_commit,
+                                          bool consume_style_sync) {
   SessionStatus& session_status = get_session_status(ipc_id);
   RimeSessionId session_id = session_status.session_id;
 
@@ -1087,7 +1183,7 @@ bool BangkeRimeHandler::_RespondFrame(BangkeSessionId ipc_id,
                          has_commit ? &commit : nullptr, has_ctx ? &ctx : nullptr,
                          &status, &config,
                          send_style ? &session_status.style : nullptr);
-  if (send_style)
+  if (send_style && consume_style_sync)
     session_status.__synced = true;
   if (frame.size() % 2)
     frame.push_back(0);

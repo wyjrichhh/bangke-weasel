@@ -45,14 +45,14 @@ Check "工作树干净" ($dirty.Count -eq 0) "未提交改动已忽略子模块/
 $rime = Get-Item "$pf\rime.dll" -ErrorAction SilentlyContinue
 Check "rime.dll 存在" ([bool]$rime) $(if ($rime) { $rime.LastWriteTime } else { '缺失' })
 Check "rime.dll 含 ai-predict 插件" (FindBytes "$pf\rime.dll" 'ai_predict_translator') "组件注册名"
-Check "rime.dll 含菜单就绪信号" (FindBytes "$pf\rime.dll" 'ai_predict/refresh') "插件新信号"
+Check "rime.dll 含在途标记" (FindBytes "$pf\rime.dll" 'ai_predict/pending') "插件用它在推理在途时请前端重排"
 $tsf = Get-Item 'C:\Windows\System32\bangke.dll' -ErrorAction SilentlyContinue
 Check "System32\bangke.dll 存在" ([bool]$tsf) $(if ($tsf) { $tsf.LastWriteTime } else { '缺失' })
-Check "bangke.dll 含快照读取" (FindBytes 'C:\Windows\System32\bangke.dll' 'BangkeAIPush' -Wide) "共享内存协议"
+Check "bangke.dll 含快照读取" (FindBytes 'C:\Windows\System32\bangke.dll' 'Local\BangkeSnapEvt_' -Wide) "共享内存事件名"
 $sv = Get-Item "$pf\BangkeServer.exe" -ErrorAction SilentlyContinue
 Check "BangkeServer.exe 存在" ([bool]$sv) $(if ($sv) { $sv.LastWriteTime } else { '缺失' })
-Check "server 含推送实现" (FindBytes "$pf\BangkeServer.exe" 'BangkeAIPush' -Wide) "共享内存协议"
-Check "server 含精确信号匹配" (FindBytes "$pf\BangkeServer.exe" 'ai_predict/refresh=1') "窄串匹配"
+Check "server 含快照推送" (FindBytes "$pf\BangkeServer.exe" 'Local\BangkeSnap_' -Wide) "共享内存槽名"
+Check "server 含 AI 泵" (FindBytes "$pf\BangkeServer.exe" 'ai_predict/pending') "读在途标记以决定是否重排"
 
 "`n--- 3. 运行态 ---"
 $p = Get-Process BangkeServer -ErrorAction SilentlyContinue

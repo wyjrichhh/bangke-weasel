@@ -86,6 +86,16 @@ LRESULT ServerImpl::OnRimeEvent(UINT uMsg,
   return 0;
 }
 
+LRESULT ServerImpl::OnTimer(UINT uMsg,
+                            WPARAM wParam,
+                            LPARAM lParam,
+                            BOOL& bHandled) {
+  // 本窗口只有 AI 泵一个定时器（候选窗自己的定时器挂在 panel 的窗口上）
+  if (m_pRequestHandler)
+    m_pRequestHandler->AiPumpTick();
+  return 0;
+}
+
 LRESULT ServerImpl::OnClose(UINT uMsg,
                             WPARAM wParam,
                             LPARAM lParam,
