@@ -1,4 +1,4 @@
-# 把 AI 插件源码铺到 librime\plugins\ai-predict，供 build.bat rime 编进 rime.dll。
+﻿# 把 AI 插件源码铺到 librime\plugins\ai-predict，供 build.bat rime 编进 rime.dll。
 #
 # librime 里这个位置记的是指向仓库外克隆的符号链接（绝对路径，mac 上的便利），
 # Windows 检出后会退化成一个内容为路径的普通文件。不换成真目录的话，
