@@ -1,7 +1,6 @@
 #include "stdafx.h"
 
 #include <PipeChannel.h>
-#include <fstream>
 
 using namespace bangke;
 using namespace std;
@@ -19,25 +18,6 @@ static const DWORD kPipeIoTimeoutMs = 3000;
     if ((err = ::GetLastError()) != __c) \
       throw err;                         \
   }
-
-// 临时诊断：把 last error 只读一次、日志与抛异常共用同一个值。
-// 上一次的教训：日志自身会调系统 API 把 last error 清成 0，抛异常时再读就成了 0。
-static void RecvTrace(const char* what, DWORD err, DWORD bytes) {
-  wchar_t tmp[MAX_PATH] = {0};
-  if (!GetTempPathW(MAX_PATH, tmp))
-    return;
-  std::wstring path = std::wstring(tmp) + L"bangke-pipe-trace.txt";
-  std::ofstream f(path.c_str(), std::ios::app);
-  if (!f)
-    return;
-  SYSTEMTIME st;
-  GetLocalTime(&st);
-  char ts[32];
-  sprintf_s(ts, "%02d:%02d:%02d.%03d", st.wHour, st.wMinute, st.wSecond,
-            st.wMilliseconds);
-  f << ts << "  pid=" << GetCurrentProcessId() << "  " << what
-    << " err=" << err << " bytes=" << bytes << "\n";
-}
 
 PipeChannelBase::PipeChannelBase(std::wstring&& pn_cmd,
                                  size_t bs,
@@ -163,17 +143,12 @@ void PipeChannelBase::_Receive(HANDLE pipe, LPVOID msg, size_t rec_len) {
           ? _IoWithTimeout(pipe, false, msg, (DWORD)rec_len,
                            kPipeIoTimeoutMs, &lread)
           : (::ReadFile(pipe, msg, rec_len, &lread, NULL) != FALSE);
-  // last error 只读一次：日志里的文件/时间调用会把它清成 0，
-  // 若抛异常时再读一次，抛出来就是 0，看不出所以然
-  const DWORD head_err = success ? 0 : ::GetLastError();
   auto ctx = _GetContext();
   // 消息头与请求体写在同一段字节里:只有消息比 rec_len 长(短读)才说明这次带了体。
   // 没带体时缓冲区里留着更早那一次请求的内容,拿它解析会读到过期数据
   ctx->body_received = !success;
   if (!success) {
-    RecvTrace("head-short", head_err, lread);
-    if (head_err != ERROR_MORE_DATA)
-      throw head_err;
+    _ThrowIfNot(ERROR_MORE_DATA);
 
     memset(ctx->buffer.get(), 0, buff_size);
     success =
@@ -182,12 +157,9 @@ void PipeChannelBase::_Receive(HANDLE pipe, LPVOID msg, size_t rec_len) {
                              (DWORD)buff_size, kPipeIoTimeoutMs, &lread)
             : (::ReadFile(pipe, ctx->buffer.get(), buff_size, &lread, NULL) !=
                FALSE);
-    const DWORD body_err = success ? 0 : ::GetLastError();
     if (!success) {
-      RecvTrace("body-FAIL", body_err, lread);
-      throw body_err;
+      _ThrowLastError;
     }
-    RecvTrace("body-ok", 0, lread);
   }
   ctx->has_body = false;
 }
