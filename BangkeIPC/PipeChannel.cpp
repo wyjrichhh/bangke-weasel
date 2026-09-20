@@ -1,6 +1,7 @@
 #include "stdafx.h"
 
 #include <PipeChannel.h>
+#include <fstream>
 
 using namespace bangke;
 using namespace std;
