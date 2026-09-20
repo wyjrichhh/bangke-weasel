@@ -143,12 +143,20 @@ void PipeChannelBase::_Receive(HANDLE pipe, LPVOID msg, size_t rec_len) {
           ? _IoWithTimeout(pipe, false, msg, (DWORD)rec_len,
                            kPipeIoTimeoutMs, &lread)
           : (::ReadFile(pipe, msg, rec_len, &lread, NULL) != FALSE);
+  // 错误码必须紧跟着读走，不能等到用的时候再取。
+  // _GetContext() 走的是 thread_specific_ptr，内部 TlsGetValue 成功时会把
+  // last error 清成 0 —— 原本它排在 ReadFile 与 ERROR_MORE_DATA 判断之间，
+  // 于是那个判断读到的是 0，抛 0 把管道线程打死。
+  // 症状极隐蔽：只有带请求体的请求会走这条路径（只有它们 success == false），
+  // 表现成"服务端对它们一律不回响应、连接随即被关"，而带体请求正是建会话那条。
+  const DWORD read_err = success ? 0 : ::GetLastError();
   auto ctx = _GetContext();
   // 消息头与请求体写在同一段字节里:只有消息比 rec_len 长(短读)才说明这次带了体。
   // 没带体时缓冲区里留着更早那一次请求的内容,拿它解析会读到过期数据
   ctx->body_received = !success;
   if (!success) {
-    _ThrowIfNot(ERROR_MORE_DATA);
+    if (read_err != ERROR_MORE_DATA)
+      throw read_err;
 
     memset(ctx->buffer.get(), 0, buff_size);
     success =
@@ -158,7 +166,7 @@ void PipeChannelBase::_Receive(HANDLE pipe, LPVOID msg, size_t rec_len) {
             : (::ReadFile(pipe, ctx->buffer.get(), buff_size, &lread, NULL) !=
                FALSE);
     if (!success) {
-      _ThrowLastError;
+      throw ::GetLastError();
     }
   }
   ctx->has_body = false;
