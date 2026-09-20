@@ -37,7 +37,12 @@ bool PipeChannelBase::_Ensure() {
       *phandle = _Connect(pname.c_str());
       return !_Invalid(*phandle);
     }
+  } catch (DWORD err) {
+    // 这里原来把所有异常都吞成 false：抛的是哪个调用、什么错误码，外面一无所知
+    BangkeDiagTrace("_Ensure: swallowed DWORD " + std::to_string(err));
+    return false;
   } catch (...) {
+    BangkeDiagTrace("_Ensure: swallowed an unknown exception");
     return false;
   }
 
