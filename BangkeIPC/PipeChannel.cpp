@@ -1,7 +1,6 @@
 #include "stdafx.h"
 
 #include <PipeChannel.h>
-#include <BangkeUtility.h>
 
 using namespace bangke;
 using namespace std;
@@ -37,12 +36,7 @@ bool PipeChannelBase::_Ensure() {
       *phandle = _Connect(pname.c_str());
       return !_Invalid(*phandle);
     }
-  } catch (DWORD err) {
-    // 这里原来把所有异常都吞成 false：抛的是哪个调用、什么错误码，外面一无所知
-    BangkeDiagTrace("_Ensure: swallowed DWORD " + std::to_string(err));
-    return false;
   } catch (...) {
-    BangkeDiagTrace("_Ensure: swallowed an unknown exception");
     return false;
   }
 
@@ -113,12 +107,6 @@ static bool _IoWithTimeout(HANDLE pipe,
       return false;
     }
     if (!::GetOverlappedResult(pipe, &ov, transferred, FALSE)) {
-      // 这条分支不显式设 last error，上层 _ThrowLastError 抛出来的可能就是 0 ——
-      // 症状是"抛了个错误码 0"，看不出所以然。这里把真实状态记下来。
-      BangkeDiagTrace(std::string("_IoWithTimeout: GetOverlappedResult failed, is_write=") +
-                      (is_write ? "1" : "0") + " transferred=" +
-                      std::to_string(*transferred) + " err=" +
-                      std::to_string(GetLastError()));
       ::CloseHandle(ov.hEvent);
       return false;
     }
@@ -134,10 +122,6 @@ size_t PipeChannelBase::_WritePipe(HANDLE pipe, size_t s, char* b) {
                                  &lwritten)
                 : (::WriteFile(pipe, b, s, &lwritten, NULL) && lwritten > 0);
   if (!ok || lwritten <= 0) {
-    BangkeDiagTrace("_WritePipe FAILED want=" + std::to_string(s) +
-                    " ok=" + (ok ? "1" : "0") + " written=" +
-                    std::to_string(lwritten) + " err=" +
-                    std::to_string(GetLastError()));
     _ThrowLastError;
   }
   ::FlushFileBuffers(pipe);
@@ -164,10 +148,6 @@ void PipeChannelBase::_Receive(HANDLE pipe, LPVOID msg, size_t rec_len) {
   // 没带体时缓冲区里留着更早那一次请求的内容,拿它解析会读到过期数据
   ctx->body_received = !success;
   if (!success) {
-    const DWORD first_err = GetLastError();
-    BangkeDiagTrace("_Receive: short read rec_len=" + std::to_string(rec_len) +
-                    " read=" + std::to_string(lread) + " err=" +
-                    std::to_string(first_err));
     _ThrowIfNot(ERROR_MORE_DATA);
 
     memset(ctx->buffer.get(), 0, buff_size);
@@ -178,12 +158,8 @@ void PipeChannelBase::_Receive(HANDLE pipe, LPVOID msg, size_t rec_len) {
             : (::ReadFile(pipe, ctx->buffer.get(), buff_size, &lread, NULL) !=
                FALSE);
     if (!success) {
-      BangkeDiagTrace("_Receive: body read FAILED read=" +
-                      std::to_string(lread) + " err=" +
-                      std::to_string(GetLastError()));
       _ThrowLastError;
     }
-    BangkeDiagTrace("_Receive: body read ok bytes=" + std::to_string(lread));
   }
   ctx->has_body = false;
 }

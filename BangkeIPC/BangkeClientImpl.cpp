@@ -44,9 +44,7 @@ void ClientImpl::_InitializeClientInfo() {
 }
 
 bool ClientImpl::Connect(ServerLauncher const& launcher) {
-  const bool ok = channel.Connect();
-  BangkeDiagTrace(std::string("ClientImpl::Connect -> ") + (ok ? "ok" : "FAILED"));
-  return ok;
+  return channel.Connect();
 }
 
 void ClientImpl::Disconnect() {
@@ -60,10 +58,8 @@ void ClientImpl::ShutdownServer() {
 }
 
 bool ClientImpl::ProcessKeyEvent(KeyEvent const& keyEvent) {
-  if (!_Active()) {
-    BangkeDiagTrace("ProcessKeyEvent: dropped, not active");
+  if (!_Active())
     return false;
-  }
 
   LRESULT ret =
       _SendMessage(BANGKE_IPC_PROCESS_KEY_EVENT, keyEvent, session_id);
@@ -163,15 +159,12 @@ void ClientImpl::SetAsciiMode(bool ascii) {
 }
 
 void ClientImpl::StartSession() {
-  if (_Active() && Echo()) {
-    BangkeDiagTrace("StartSession: already active, reused");
+  if (_Active() && Echo())
     return;
-  }
 
   _WriteClientInfo();
   UINT ret = _SendMessage(BANGKE_IPC_START_SESSION, 0, 0);
   session_id = ret;
-  BangkeDiagTrace("StartSession: START_SESSION -> id=" + std::to_string(ret));
 }
 
 void ClientImpl::EndSession() {
@@ -190,16 +183,10 @@ void ClientImpl::EndMaintenance() {
 }
 
 bool ClientImpl::Echo() {
-  if (!_Active()) {
-    BangkeDiagTrace("Echo: not active (connected=" +
-                    std::string(channel.Connected() ? "1" : "0") +
-                    " sid=" + std::to_string(session_id) + ")");
+  if (!_Active())
     return false;
-  }
 
   UINT serverEcho = _SendMessage(BANGKE_IPC_ECHO, 0, session_id);
-  BangkeDiagTrace("Echo: sent sid=" + std::to_string(session_id) +
-                  " got=" + std::to_string(serverEcho));
   return (serverEcho == session_id);
 }
 
@@ -222,20 +209,10 @@ bool ClientImpl::_WriteClientInfo() {
 LRESULT ClientImpl::_SendMessage(BANGKE_IPC_COMMAND Msg,
                                  DWORD wParam,
                                  DWORD lParam) {
-  // 原来这里是 catch (DWORD) { return 0; }:管道出任何事都吞成 0，上层看到的就是
-  // "会话号 0"，跟"服务端拒绝建会话"长得一模一样。打点区分开。
   try {
     PipeMessage req{Msg, wParam, lParam};
-    const LRESULT r = channel.Transact(req);
-    BangkeDiagTrace("send cmd=" + std::to_string((int)Msg) + " -> " +
-                    std::to_string((long long)r));
-    return r;
-  } catch (DWORD ex) {
-    BangkeDiagTrace("send cmd=" + std::to_string((int)Msg) + " threw DWORD " +
-                    std::to_string(ex));
-    return 0;
-  } catch (...) {
-    BangkeDiagTrace("send cmd=" + std::to_string((int)Msg) + " threw other");
+    return channel.Transact(req);
+  } catch (DWORD /* ex */) {
     return 0;
   }
 }

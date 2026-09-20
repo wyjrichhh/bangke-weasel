@@ -1,6 +1,5 @@
 ﻿#pragma once
 #include <filesystem>
-#include <fstream>
 #include <string>
 #include <sstream>
 #include <wrl/client.h>
@@ -37,24 +36,6 @@ inline std::wstring getUsername() {
 // 退回 ToUnicodeEx 取实际字符（见 BangkeTSF/KeyEvent.cpp）。
 // 服务端的按键路由与设置页扩展 speller/alphabet 必须用同一份，故放在共享头里。
 constexpr const char* kAiOnlyExtraInput = "1234567890,.;:!?";
-
-// 临时诊断：把客户端的连接/会话过程落到 %TEMP%\bangke-tsf-trace.txt。
-// TSF 那半边一行日志都没有，排查"连上了没有、会话建起来没有"只能靠它。定位完删。
-inline void BangkeDiagTrace(const std::string& what) {
-  wchar_t tmp[MAX_PATH] = {0};
-  if (!GetTempPathW(MAX_PATH, tmp))
-    return;
-  std::wstring path = std::wstring(tmp) + L"bangke-tsf-trace.txt";
-  std::ofstream f(path.c_str(), std::ios::app);
-  if (!f)
-    return;
-  SYSTEMTIME st;
-  GetLocalTime(&st);
-  char ts[32];
-  sprintf_s(ts, "%02d:%02d:%02d.%03d", st.wHour, st.wMinute, st.wSecond,
-            st.wMilliseconds);
-  f << ts << "  pid=" << GetCurrentProcessId() << "  " << what << "\n";
-}
 
 // data directories
 std::filesystem::path BangkeSharedDataPath();

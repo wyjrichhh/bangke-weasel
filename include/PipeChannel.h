@@ -2,7 +2,6 @@
 #include <string>
 #include <memory>
 #include <windows.h>
-#include <BangkeUtility.h>
 #include <boost/interprocess/streams/bufferstream.hpp>
 #include <boost/thread.hpp>
 #include <boost/thread/tss.hpp>
@@ -130,16 +129,10 @@ class PipeChannel : public PipeChannelBase {
   }
 
   _TyRes Transact(Msg& msg) {
-    BangkeDiagTrace("Transact: enter cmd=" + std::to_string((int)msg.Msg));
     _Ensure();
     HANDLE* phandle = _GetPipeHandle();
-    BangkeDiagTrace(std::string("Transact: after _Ensure, handle=") +
-                    (_Invalid(*phandle) ? "INVALID" : "valid"));
     _Send(*phandle, msg);
-    BangkeDiagTrace("Transact: after _Send");
-    const _TyRes r = _ReceiveResponse();
-    BangkeDiagTrace("Transact: after _ReceiveResponse");
-    return r;
+    return _ReceiveResponse();
   }
 
   void ClearBufferStream() {
