@@ -1,112 +1,34 @@
-#include "AIPage.h"
+#include "AiModel.h"
 
-#include <QComboBox>
 #include <QDir>
 #include <QFile>
-#include <QLabel>
-#include <QLineEdit>
 #include <QRegularExpression>
-#include <QSpinBox>
-#include <QStringList>
-#include <QVBoxLayout>
 
-#include "Ui.h"
 #include <BangkeUtility.h>
 
 #pragma warning(disable : 4005)
 #include <rime_api.h>
 #pragma warning(default : 4005)
 
-AIPage::AIPage(QWidget* parent) : QWidget(parent) {
-  auto* layout = new QVBoxLayout(this);
-  layout->setContentsMargins(16, 12, 16, 12);
-  layout->setSpacing(10);
+namespace {
 
-  schemaCombo_ = new QComboBox;
-  schemaCombo_->setFixedWidth(170);
-  schemaLabel_ = new QLabel;
-  schemaLabel_->setObjectName(QStringLiteral("hint"));
+QVariantMap range(int lo, int hi, const QString& suffix) {
+  QVariantMap m;
+  m.insert(QStringLiteral("min"), lo);
+  m.insert(QStringLiteral("max"), hi);
+  m.insert(QStringLiteral("suffix"), suffix);
+  return m;
+}
 
-  enabled_ = new ToggleSwitch;
-  filterPunctuation_ = new ToggleSwitch;
-  aiOnly_ = new ToggleSwitch;
-
-  device_ = new QComboBox;
-  device_->setFixedWidth(150);
-  device_->addItem(QStringLiteral(u"CPU"), QStringLiteral("cpu"));
-  device_->addItem(QStringLiteral(u"CUDA (GPU)"), QStringLiteral("cuda"));
-  maxTokens_ = new QSpinBox;
-  maxTokens_->setRange(1, 1024);
-  debounce_ = new QSpinBox;
-  debounce_->setRange(0, 5000);
-  debounce_->setSuffix(QStringLiteral(u" ms"));
-  minInput_ = new QSpinBox;
-  minInput_->setRange(1, 100);
-  minHanzi_ = new QSpinBox;
-  minHanzi_->setRange(1, 10);
-  for (auto* spin : {maxTokens_, debounce_, minInput_, minHanzi_})
-    spin->setFixedWidth(96);
-
-  auto* basic = new QVBoxLayout();
-  basic->addLayout(makeSettingRows({
-      makeSettingRow(QStringLiteral(u"输入方案"), schemaCombo_),
-      makeSettingRow(QStringLiteral(u"启用 AI 预测"), enabled_),
-      makeSettingRow(QStringLiteral(u"过滤标点符号"), filterPunctuation_,
-                     QStringLiteral(u"关掉后候选保留模型吐出的句读")),
-      makeSettingRow(QStringLiteral(u"仅使用 AI 候选"), aiOnly_,
-                     QStringLiteral(u"候选只来自模型:一条、不带序号")),
-      makeSettingRow(QStringLiteral(u"设备"), device_),
-      makeSettingRow(QStringLiteral(u"最大 token 数"), maxTokens_),
-      makeSettingRow(QStringLiteral(u"防抖"), debounce_),
-      makeSettingRow(QStringLiteral(u"最小输入长度"), minInput_),
-      makeSettingRow(QStringLiteral(u"最少汉字数"), minHanzi_),
-  }));
-  basic->addWidget(schemaLabel_);
-  layout->addWidget(makeCard(QStringLiteral(u"基本"), basic));
-
-  targetIndex_ = new QSpinBox;
-  targetIndex_->setRange(0, 20);
-  searchRange_ = new QSpinBox;
-  searchRange_->setRange(1, 100);
-  contextWindow_ = new QSpinBox;
-  contextWindow_->setRange(1, 100);
-  minContextPrompt_ = new QSpinBox;
-  minContextPrompt_->setRange(1, 20);
-  for (auto* spin :
-       {targetIndex_, searchRange_, contextWindow_, minContextPrompt_})
-    spin->setFixedWidth(96);
-  modelPath_ = new QLineEdit;
-  modelPath_->setReadOnly(true);
-  modelPath_->setFixedWidth(280);
-
-  layout->addWidget(makeCard(
-      QStringLiteral(u"高级选项"),
-      makeSettingRows({
-          makeSettingRow(QStringLiteral(u"AI 候选显示位置 (target_index)"),
-                         targetIndex_),
-          makeSettingRow(QStringLiteral(u"去重扫描范围 (search_range)"),
-                         searchRange_),
-          makeSettingRow(QStringLiteral(u"上下文窗口 (context_window_size)"),
-                         contextWindow_),
-          makeSettingRow(QStringLiteral(u"上下文最小拼音数"), minContextPrompt_),
-          makeSettingRow(QStringLiteral(u"模型路径"), modelPath_),
-      })));
-  layout->addStretch(1);
-
-  // 先连信号再 load:load 里填下拉框会发 currentIndexChanged
-  connect(schemaCombo_, &QComboBox::currentIndexChanged, this, [this](int) {
-    const QString picked = schemaCombo_->currentData().toString();
-    if (picked.isEmpty() || picked == currentSchema_)
-      return;
-    commitWidgets();  // 换方案前把当前这组值收进内存,别丢
-    showSchema(picked);
-  });
-
-  load();
+QVariantMap option(const QString& label, const QString& value) {
+  QVariantMap m;
+  m.insert(QStringLiteral("label"), label);
+  m.insert(QStringLiteral("value"), value);
+  return m;
 }
 
 // 逐行扫描 yaml:取顶层某键的值。只用于读方案的展示名,不用于写。
-static QString findValue(const QString& yaml, const QString& key) {
+QString findValue(const QString& yaml, const QString& key) {
   for (const auto& line : yaml.split(QLatin1Char('\n'))) {
     if (line.trimmed().startsWith(key + QLatin1Char(':')))
       return line.mid(line.indexOf(QLatin1Char(':')) + 1).trimmed();
@@ -121,7 +43,7 @@ static QString findValue(const QString& yaml, const QString& key) {
 
 // ai_predict: 块的范围:缩进 2 空格的 "  ai_predict:" 起,到下一个缩进 ≤2 空格的
 // 非空行为止。块内键缩进 4 空格。
-static bool aiBlockRange(const QString& yaml, int* start, int* end) {
+bool aiBlockRange(const QString& yaml, int* start, int* end) {
   const int apStart = yaml.indexOf(QStringLiteral("  ai_predict:"));
   if (apStart < 0)
     return false;
@@ -144,7 +66,7 @@ static bool aiBlockRange(const QString& yaml, int* start, int* end) {
 }
 
 // 块内某个键的原始值(剥掉行尾注释);块外同名键不算
-static QString blockValue(const QString& block, const QString& key) {
+QString blockValue(const QString& block, const QString& key) {
   const QRegularExpression rx(
       QStringLiteral("(?:^|\n)    %1:[ \t]*([^\n]*)")
           .arg(QRegularExpression::escape(key)));
@@ -158,19 +80,17 @@ static QString blockValue(const QString& block, const QString& key) {
   return value;
 }
 
-static bool hasBlockKey(const QString& block, const QString& key) {
+bool hasBlockKey(const QString& block, const QString& key) {
   return block.contains(QRegularExpression(
       QStringLiteral("(?:^|\n)    %1:").arg(QRegularExpression::escape(key))));
 }
 
-static void removeBlockKey(QString& block, const QString& key) {
+void removeBlockKey(QString& block, const QString& key) {
   block.remove(QRegularExpression(QStringLiteral("(?m)^    %1:[^\n]*\n?")
                                       .arg(QRegularExpression::escape(key))));
 }
 
-static void setBlockKey(QString& block,
-                        const QString& key,
-                        const QString& value) {
+void setBlockKey(QString& block, const QString& key, const QString& value) {
   const QRegularExpression rx(
       QStringLiteral("(^|\n)    %1:[^\n]*").arg(QRegularExpression::escape(key)));
   auto m = rx.match(block);
@@ -184,13 +104,13 @@ static void setBlockKey(QString& block,
   block += line + QLatin1Char('\n');
 }
 
-static bool hasTopLevel(const QString& yaml, const QString& key) {
+bool hasTopLevel(const QString& yaml, const QString& key) {
   return yaml.contains(QRegularExpression(
       QStringLiteral("(?m)^  %1:").arg(QRegularExpression::escape(key))));
 }
 
 // YAML 里以这些字符开头的标量会被当成语法,得加引号
-static QString yamlScalar(const QString& value) {
+QString yamlScalar(const QString& value) {
   static const QString kIndicators = QStringLiteral("-?:,[]{}#&*!|>'\"%@`");
   const bool needs =
       value.isEmpty() || value.contains(QLatin1Char('#')) ||
@@ -204,7 +124,7 @@ static QString yamlScalar(const QString& value) {
          QStringLiteral("'");
 }
 
-static void setTopLevel(QString& yaml, const QString& key, const QString& value) {
+void setTopLevel(QString& yaml, const QString& key, const QString& value) {
   const QRegularExpression rx(
       QStringLiteral("(?m)^  %1:[^\n]*").arg(QRegularExpression::escape(key)));
   auto m = rx.match(yaml);
@@ -222,14 +142,160 @@ static void setTopLevel(QString& yaml, const QString& key, const QString& value)
   yaml.insert(nl + 1, line + QLatin1Char('\n'));
 }
 
-static void removeTopLevel(QString& yaml, const QString& key) {
+void removeTopLevel(QString& yaml, const QString& key) {
   yaml.remove(QRegularExpression(QStringLiteral("(?m)^  %1:[^\n]*\n?")
                                      .arg(QRegularExpression::escape(key))));
 }
 
+}  // namespace
+
+AiModel::AiModel(QObject* parent) : QObject(parent) {}
+
+QString AiModel::currentSchemaName() const {
+  return currentSchema_.isEmpty() ? QString() : schemaDisplayName(currentSchema_);
+}
+
+AiModel::AIPredict AiModel::predictFor(const QString& schemaId) const {
+  const auto it = predict_.find(schemaId);
+  return it == predict_.end() ? AIPredict() : it->second;
+}
+
+AiModel::AIPredict* AiModel::currentEdit() {
+  if (currentSchema_.isEmpty())
+    return nullptr;
+  return &predict_[currentSchema_];
+}
+
+bool AiModel::enabled() const { return predictFor(currentSchema_).enabled; }
+void AiModel::setEnabled(bool value) {
+  if (auto* p = currentEdit()) {
+    p->enabled = value;
+    emit changed();
+  }
+}
+
+bool AiModel::filterPunctuation() const {
+  return predictFor(currentSchema_).filterPunctuation;
+}
+void AiModel::setFilterPunctuation(bool value) {
+  if (auto* p = currentEdit()) {
+    p->filterPunctuation = value;
+    emit changed();
+  }
+}
+
+bool AiModel::aiOnly() const { return predictFor(currentSchema_).aiOnly; }
+void AiModel::setAiOnly(bool value) {
+  if (auto* p = currentEdit()) {
+    p->aiOnly = value;
+    emit changed();
+  }
+}
+
+QString AiModel::device() const { return predictFor(currentSchema_).device; }
+void AiModel::setDevice(const QString& value) {
+  if (auto* p = currentEdit()) {
+    p->device = value;
+    emit changed();
+  }
+}
+
+int AiModel::targetIndex() const {
+  return predictFor(currentSchema_).targetIndex;
+}
+void AiModel::setTargetIndex(int value) {
+  if (auto* p = currentEdit()) {
+    p->targetIndex = value;
+    emit changed();
+  }
+}
+
+int AiModel::minInputLength() const {
+  return predictFor(currentSchema_).minInputLength;
+}
+void AiModel::setMinInputLength(int value) {
+  if (auto* p = currentEdit()) {
+    p->minInputLength = value;
+    emit changed();
+  }
+}
+
+int AiModel::minHanzi() const { return predictFor(currentSchema_).minHanzi; }
+void AiModel::setMinHanzi(int value) {
+  if (auto* p = currentEdit()) {
+    p->minHanzi = value;
+    emit changed();
+  }
+}
+
+int AiModel::debounceMs() const { return predictFor(currentSchema_).debounceMs; }
+void AiModel::setDebounceMs(int value) {
+  if (auto* p = currentEdit()) {
+    p->debounceMs = value;
+    emit changed();
+  }
+}
+
+int AiModel::maxTokens() const { return predictFor(currentSchema_).maxTokens; }
+void AiModel::setMaxTokens(int value) {
+  if (auto* p = currentEdit()) {
+    p->maxTokens = value;
+    emit changed();
+  }
+}
+
+int AiModel::searchRange() const {
+  return predictFor(currentSchema_).searchRange;
+}
+void AiModel::setSearchRange(int value) {
+  if (auto* p = currentEdit()) {
+    p->searchRange = value;
+    emit changed();
+  }
+}
+
+int AiModel::contextWindowSize() const {
+  return predictFor(currentSchema_).contextWindowSize;
+}
+void AiModel::setContextWindowSize(int value) {
+  if (auto* p = currentEdit()) {
+    p->contextWindowSize = value;
+    emit changed();
+  }
+}
+
+int AiModel::minContextPromptLength() const {
+  return predictFor(currentSchema_).minContextPromptLength;
+}
+void AiModel::setMinContextPromptLength(int value) {
+  if (auto* p = currentEdit()) {
+    p->minContextPromptLength = value;
+    emit changed();
+  }
+}
+
+QVariantList AiModel::deviceOptions() const {
+  return {option(QStringLiteral(u"CPU"), QStringLiteral("cpu")),
+          option(QStringLiteral(u"CUDA (GPU)"), QStringLiteral("cuda"))};
+}
+
+QVariantMap AiModel::fieldRanges() const {
+  QVariantMap out;
+  out.insert(QStringLiteral("targetIndex"), range(0, 20, QString()));
+  out.insert(QStringLiteral("minInputLength"), range(1, 100, QString()));
+  out.insert(QStringLiteral("minHanzi"), range(1, 10, QString()));
+  out.insert(QStringLiteral("debounceMs"),
+             range(0, 5000, QStringLiteral(u" ms")));
+  out.insert(QStringLiteral("maxTokens"), range(1, 1024, QString()));
+  out.insert(QStringLiteral("searchRange"), range(1, 100, QString()));
+  out.insert(QStringLiteral("contextWindowSize"), range(1, 100, QString()));
+  out.insert(QStringLiteral("minContextPromptLength"), range(1, 20, QString()));
+  return out;
+}
+
 // 当前正在用的方案:rime 把最近选择的方案记在 user.yaml(previously_selected_schema)。
 // 取不到时退到方案列表第一个。
-QString AIPage::activeSchemaId() const {
+QString AiModel::activeSchemaId() const {
   const QDir dir(QString::fromStdWString(BangkeUserDataPath().wstring()));
   QFile u(dir.filePath(QStringLiteral("user.yaml")));
   if (u.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -255,7 +321,7 @@ QString AIPage::activeSchemaId() const {
 
 // 接了 AI 的方案:生效配置里能解析出 ai_predict/model_path 的那些——安装器把 translator
 // 与 filter 接进去的就是它们。往别处写设置不会有任何效果。
-QStringList AIPage::aiWiredSchemas() const {
+QStringList AiModel::aiWiredSchemas() const {
   QStringList result;
   RimeApi* rime = rime_get_api();
   RimeSchemaList list = {0};
@@ -279,13 +345,13 @@ QStringList AIPage::aiWiredSchemas() const {
   return result;
 }
 
-QString AIPage::schemaCustomYaml(const QString& schemaId) const {
+QString AiModel::schemaCustomYaml(const QString& schemaId) const {
   const QDir dir(QString::fromStdWString(BangkeUserDataPath().wstring()));
   return dir.filePath(schemaId + QStringLiteral(".custom.yaml"));
 }
 
 // 展示名取共享数据目录 <id>.schema.yaml 的顶层 name:;取不到用 id
-QString AIPage::schemaDisplayName(const QString& schemaId) const {
+QString AiModel::schemaDisplayName(const QString& schemaId) const {
   const QDir dir(QString::fromStdWString(BangkeSharedDataPath().wstring()));
   QFile f(dir.filePath(schemaId + QStringLiteral(".schema.yaml")));
   if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -301,7 +367,7 @@ QString AIPage::schemaDisplayName(const QString& schemaId) const {
 // 方案的生效 speller/alphabet:纯推理模式扩展它,关掉时还原它。
 // 必须是生效值(含方案自带的),不能只看补丁——补丁里没有这一行时,要备份的是方案
 // 自己的字母表,不是空串。
-QString AIPage::schemaAlphabet(const QString& schemaId) const {
+QString AiModel::schemaAlphabet(const QString& schemaId) const {
   RimeApi* rime = rime_get_api();
   RimeConfig config = {0};
   if (!rime->schema_open(schemaId.toUtf8().constData(), &config))
@@ -316,7 +382,7 @@ QString AIPage::schemaAlphabet(const QString& schemaId) const {
   return result;
 }
 
-AIPage::AIPredict AIPage::readPredict(const QString& schemaId) const {
+AiModel::AIPredict AiModel::readPredict(const QString& schemaId) const {
   AIPredict p;
   QFile f(schemaCustomYaml(schemaId));
   if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -361,23 +427,12 @@ AIPage::AIPredict AIPage::readPredict(const QString& schemaId) const {
   return p;
 }
 
-// 把某个方案的值铺到控件上
-void AIPage::showSchema(const QString& schemaId) {
+// 把某个方案的值铺到属性上
+void AiModel::showSchema(const QString& schemaId) {
   currentSchema_ = schemaId;
-  const AIPredict& p = predict_[schemaId];
-
-  enabled_->setChecked(p.enabled);
-  filterPunctuation_->setChecked(p.filterPunctuation);
-  aiOnly_->setChecked(p.aiOnly);
-  device_->setCurrentIndex(p.device == QStringLiteral("cuda") ? 1 : 0);
-  maxTokens_->setValue(p.maxTokens);
-  debounce_->setValue(p.debounceMs);
-  minInput_->setValue(p.minInputLength);
-  minHanzi_->setValue(p.minHanzi);
-  targetIndex_->setValue(p.targetIndex);
-  searchRange_->setValue(p.searchRange);
-  contextWindow_->setValue(p.contextWindowSize);
-  minContextPrompt_->setValue(p.minContextPromptLength);
+  // 与原 operator[] 一致:缺条目就补一份默认值
+  if (!predict_.count(schemaId))
+    predict_[schemaId] = AIPredict();
 
   QFile f(schemaCustomYaml(schemaId));
   QString modelPath;
@@ -386,49 +441,39 @@ void AIPage::showSchema(const QString& schemaId) {
     const QString yaml = QString::fromUtf8(f.readAll());
     f.close();
     if (aiBlockRange(yaml, &start, &end))
-      modelPath = blockValue(yaml.mid(start, end - start),
-                             QStringLiteral("model_path"));
+      modelPath =
+          blockValue(yaml.mid(start, end - start), QStringLiteral("model_path"));
   }
-  modelPath_->setText(modelPath);
+  modelPath_ = modelPath;
 
-  const int index = schemaCombo_->findData(schemaId);
-  if (index >= 0 && index != schemaCombo_->currentIndex())
-    schemaCombo_->setCurrentIndex(index);
-  schemaLabel_->setText(QStringLiteral(u"设置按方案各存一份,当前编辑:%1")
-                            .arg(schemaDisplayName(schemaId)));
+  emit currentSchemaChanged();
+  emit changed();
 }
 
-void AIPage::commitWidgets() {
-  AIPredict& p = predict_[currentSchema_];
-  p.enabled = enabled_->isChecked();
-  p.filterPunctuation = filterPunctuation_->isChecked();
-  p.aiOnly = aiOnly_->isChecked();
-  p.device = device_->currentData().toString();
-  p.maxTokens = maxTokens_->value();
-  p.debounceMs = debounce_->value();
-  p.minInputLength = minInput_->value();
-  p.minHanzi = minHanzi_->value();
-  p.targetIndex = targetIndex_->value();
-  p.searchRange = searchRange_->value();
-  p.contextWindowSize = contextWindow_->value();
-  p.minContextPromptLength = minContextPrompt_->value();
+void AiModel::setCurrentSchema(const QString& schemaId) {
+  if (schemaId == currentSchema_ || !schemas_.contains(schemaId))
+    return;
+  showSchema(schemaId);
 }
 
-void AIPage::load() {
+void AiModel::load() {
   predict_.clear();
-  schemaCombo_->blockSignals(true);
-  schemaCombo_->clear();
+  schemas_.clear();
+  schemaNames_.clear();
+  modelPath_.clear();
 
   const QStringList schemas = aiWiredSchemas();
   for (const QString& id : schemas) {
     predict_[id] = readPredict(id);
-    schemaCombo_->addItem(schemaDisplayName(id), id);
+    schemas_ << id;
+    schemaNames_ << schemaDisplayName(id);
   }
-  schemaCombo_->blockSignals(false);
+  emit schemasChanged();
 
   if (schemas.isEmpty()) {
     currentSchema_.clear();
-    schemaLabel_->setText(QStringLiteral(u"没有接入 AI 预测的方案"));
+    emit currentSchemaChanged();
+    emit changed();
     return;
   }
   // 默认停在正在用的那个方案:改了半天发现改的不是生效的那份最费解
@@ -444,10 +489,10 @@ void AIPage::load() {
 //
 // 只动传入的块文本,顶层那行的改写交给调用方在换块之后做:顶层可能是新增一行,
 // 那会挪动块的偏移,先改后换块会拼错位置。
-AIPage::AlphabetEdit AIPage::planAiOnlyAlphabet(const QString& schemaId,
-                                                bool aiOnly,
-                                                QString& block,
-                                                const QString& yaml) {
+AiModel::AlphabetEdit AiModel::planAiOnlyAlphabet(const QString& schemaId,
+                                                  bool aiOnly,
+                                                  QString& block,
+                                                  const QString& yaml) {
   AlphabetEdit edit;
   const QString extra = QString::fromLatin1(kAiOnlyExtraInput);
   const QString backup = blockValue(block, QStringLiteral("alphabet_backup"));
@@ -465,7 +510,8 @@ AIPage::AlphabetEdit AIPage::planAiOnlyAlphabet(const QString& schemaId,
       setBlockKey(block, QStringLiteral("alphabet_backup"), yamlScalar(original));
       // 先于写行记录:回答的是"用户本来有没有",不是"现在有没有"
       if (!hasTopLevel(yaml, QStringLiteral("speller/alphabet")))
-        setBlockKey(block, QStringLiteral("alphabet_added"), QStringLiteral("true"));
+        setBlockKey(block, QStringLiteral("alphabet_added"),
+                    QStringLiteral("true"));
     }
     edit.action = AlphabetEdit::Set;
     edit.value = original + extra;
@@ -486,10 +532,9 @@ AIPage::AlphabetEdit AIPage::planAiOnlyAlphabet(const QString& schemaId,
   return edit;
 }
 
-bool AIPage::save() {
+bool AiModel::save() {
   if (currentSchema_.isEmpty())
     return false;
-  commitWidgets();
 
   bool changed = false;
   // 重新枚举而不是复用载入时的列表:窗口开着的时候方案可能被增删,对着一个已经不在的

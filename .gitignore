@@ -61,6 +61,6 @@ installer/Files.wxs
 *.msi
 *.bundle
 *.wixpdb
-models/
+/models/
 rime-ice.tar.gz
 rime-ice-x/

@@ -398,7 +398,11 @@ rem ---------------------------------------------------------------------------
   if errorlevel 1 goto error
   copy /Y BangkeSettings\build\%build_config%\BangkeSettings.exe output\
   if errorlevel 1 goto error
-  "%QT_DIR%\bin\windeployqt" --release --no-translations --no-system-d3d-compiler --no-opengl-sw --compiler-runtime output\BangkeSettings.exe
+  rem --qmldir 让 windeployqt 扫到 QML 里的 import,把 QtQuick/Controls 那棵 qml 树与
+  rem 相应 DLL 一起铺出来;漏了它 exe 起得来但 import 全找不到
+  rem --no-opengl-sw 保留:Qt6 的 Quick 走 RHI,D3D11 优先,且软件兜底是 CPU 光栅化,
+  rem 不需要 Mesa 那份 opengl32sw.dll(约 20MB)。若哪天在无 D3D11 的机器上白屏,去掉它再打
+  "%QT_DIR%\bin\windeployqt" --release --no-translations --no-system-d3d-compiler --no-opengl-sw --compiler-runtime --qmldir BangkeSettings output\BangkeSettings.exe
   if errorlevel 1 goto error
   exit /b
 :error

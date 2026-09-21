@@ -1,6 +1,5 @@
 #include "Configurator.h"
 
-#include <QMessageBox>
 #include <windows.h>
 #include <cassert>
 #include <filesystem>
@@ -62,8 +61,8 @@ int Configurator::UpdateWorkspace(bool report_errors) {
   if (GetLastError() == ERROR_ALREADY_EXISTS) {
     CloseHandle(hMutex);
     if (report_errors)
-      QMessageBox::information(nullptr, QStringLiteral(u"蚌壳拼音"),
-                               QStringLiteral(u"正在执行另一项部署任务，方才所做的修改将在输入法再次启动后生效。"));
+      emit info(QStringLiteral(u"蚌壳拼音"),
+                QStringLiteral(u"正在执行另一项部署任务，方才所做的修改将在输入法再次启动后生效。"));
     return 1;
   }
 
@@ -258,7 +257,8 @@ int Configurator::SyncUserData() {
     return 1;
   if (GetLastError() == ERROR_ALREADY_EXISTS) {
     CloseHandle(hMutex);
-    QMessageBox::information(nullptr, QStringLiteral(u"蚌壳拼音"), QStringLiteral(u"正在执行另一项部署任务，请稍候再试。"));
+    emit info(QStringLiteral(u"蚌壳拼音"),
+              QStringLiteral(u"正在执行另一项部署任务，请稍候再试。"));
     return 1;
   }
 
@@ -290,7 +290,8 @@ bool Configurator::BeginDictSession() {
     return false;
   if (GetLastError() == ERROR_ALREADY_EXISTS) {
     CloseHandle(hMutex);
-    QMessageBox::information(nullptr, QStringLiteral(u"蚌壳拼音"), QStringLiteral(u"正在执行另一项部署任务，请稍候再试。"));
+    emit info(QStringLiteral(u"蚌壳拼音"),
+              QStringLiteral(u"正在执行另一项部署任务，请稍候再试。"));
     return false;
   }
   m_hDictMutex = hMutex;

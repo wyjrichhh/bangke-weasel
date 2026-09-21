@@ -18,11 +18,21 @@ $payload = [System.Collections.Generic.List[string]]::new()
 $payload.Add("BangkeInstaller.exe")
 $payload.Add($msi.Name)
 # dxcompiler/dxil 是 Qt6Gui 的直接依赖,漏了即启动即崩(windeployqt 铺过它们)
+# 设置程序改成 QML 之后还多出 Qt Quick 那一串 DLL:Qt6Qml 起手就解析 qml 树,
+# 缺一个就是启动即白屏。列的是超集,Test-Path 兜底 —— 没铺出来的自然跳过
 foreach ($n in @("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll", "Qt6Network.dll",
+                 "Qt6Qml.dll", "Qt6QmlModels.dll", "Qt6QmlWorkerScript.dll",
+                 "Qt6QmlMeta.dll", "Qt6Quick.dll", "Qt6QuickControls2.dll",
+                 "Qt6QuickControls2Impl.dll", "Qt6QuickTemplates2.dll",
+                 "Qt6QuickLayouts.dll", "Qt6QuickEffects.dll",
+                 "Qt6QuickDialogs2.dll", "Qt6QuickDialogs2QuickImpl.dll",
+                 "Qt6QuickDialogs2Utils.dll",
                  "dxcompiler.dll", "dxil.dll")) {
   if (Test-Path (Join-Path $output $n)) { $payload.Add($n) }
 }
-foreach ($d in @("platforms", "styles", "imageformats", "tls", "networkinformation", "generic")) {
+# qml 是 Qt Quick 的模块树(QtQuick/Controls/Layouts/Effects/Dialogs...),
+# 引导壳按相对路径整棵收,漏了它 exe 里的 import 一个都解析不到
+foreach ($d in @("platforms", "styles", "imageformats", "iconengines", "tls", "networkinformation", "generic", "qml")) {
   $p = Join-Path $output $d
   if (Test-Path $p) {
     Get-ChildItem $p -Recurse -File | ForEach-Object {

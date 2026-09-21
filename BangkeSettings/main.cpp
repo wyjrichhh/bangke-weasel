@@ -1,11 +1,17 @@
-#include <QApplication>
-#include <QMessageBox>
-#include <windows.h>
+#include <string>
 
-#include "MainWindow.h"
+#include <QFont>
+#include <QGuiApplication>
+#include <QQmlApplicationEngine>
+#include <QQmlContext>
+#include <QQuickStyle>
+#include <QUrl>
+
+#include "AppController.h"
 #include "Configurator.h"
-#include "Theme.h"
-#include <BangkeUtility.h>
+#include "SystemTheme.h"
+// 放在项目头之后:AppController.h 会带进 rime_api.h,先 windows.h 会撞宏重定义(4005)
+#include <windows.h>
 
 namespace {
 
@@ -33,17 +39,23 @@ Mode parseMode(const QString& arg) {
   return Mode::Gui;
 }
 
-void showUsage(QWidget* parent) {
-  QMessageBox::information(
-      parent, QStringLiteral(u"蚌壳拼音·设置"),
-      QStringLiteral(u"用法: BangkeSettings.exe [选项]\n"
-                     u"/deploy  - 重新部署\n"
-                     u"/dict    - 词典管理\n"
-                     u"/sync    - 同步用户数据\n"
-                     u"/install - 静默首次部署（安装器调用）\n"
-                     u"/cleanup - 卸载残留清理（安装器调用）\n"
-                     u"/clearpending - 清除指向本产品的挂起重启删除（安装器调用）\n"
-                     u"/?       - 显示本帮助"));
+// 无 Widgets 之后的模态提示。CLI 模式下没法用 QML,退回 Win32 原生框
+void showMessage(const QString& title, const QString& body) {
+  const std::wstring t = title.toStdWString();
+  const std::wstring b = body.toStdWString();
+  MessageBoxW(nullptr, b.c_str(), t.c_str(), MB_OK | MB_ICONINFORMATION);
+}
+
+void showUsage() {
+  showMessage(QStringLiteral(u"蚌壳拼音·设置"),
+              QStringLiteral(u"用法: BangkeSettings.exe [选项]\n"
+                             u"/deploy  - 重新部署\n"
+                             u"/dict    - 词典管理\n"
+                             u"/sync    - 同步用户数据\n"
+                             u"/install - 静默首次部署（安装器调用）\n"
+                             u"/cleanup - 卸载残留清理（安装器调用）\n"
+                             u"/clearpending - 清除指向本产品的挂起重启删除（安装器调用）\n"
+                             u"/?       - 显示本帮助"));
 }
 
 }  // namespace
@@ -61,10 +73,9 @@ int main(int argc, char* argv[]) {
 
   int ret = 0;
   {
-    QApplication app(argc, argv);
-    QApplication::setApplicationName(QStringLiteral(u"蚌壳拼音·设置"));
-    QApplication::setOrganizationName(QStringLiteral(u"Bangke"));
-    Theme::Apply(app);
+    QGuiApplication app(argc, argv);
+    QGuiApplication::setApplicationName(QStringLiteral(u"蚌壳拼音·设置"));
+    QGuiApplication::setOrganizationName(QStringLiteral("Bangke"));
 
     Mode mode = argc > 1 ? parseMode(QString::fromLocal8Bit(argv[1])) : Mode::Gui;
 
@@ -78,9 +89,16 @@ int main(int argc, char* argv[]) {
     Configurator configurator;
     configurator.Initialize();
 
+    // 非 GUI 模式没有 QML 承接提示,退回 Win32 框
+    if (mode != Mode::Gui && mode != Mode::Dict)
+      QObject::connect(&configurator, &Configurator::info, &configurator,
+                       [](const QString& title, const QString& body) {
+                         showMessage(title, body);
+                       });
+
     switch (mode) {
       case Mode::Help:
-        showUsage(nullptr);
+        showUsage();
         break;
       case Mode::Deploy:
         ret = configurator.UpdateWorkspace();
@@ -97,9 +115,31 @@ int main(int argc, char* argv[]) {
         break;
       case Mode::Dict:
       case Mode::Gui: {
-        MainWindow window(&configurator, mode == Mode::Dict);
-        window.show();
-        ret = app.exec();
+        // 屏幕上的字号与字体:QML 里没显式指定的文本跟这一份
+        app.setFont(QFont(QStringLiteral("Microsoft YaHei UI"), 10));
+        // 落到 Basic:QML 靠每个实例覆写 background/indicator 拿真投影与焦点环,
+        // 换 style 会把这些盖掉
+        QQuickStyle::setStyle(QStringLiteral("Basic"));
+
+        SystemTheme sysTheme;
+        AppController controller(&configurator, mode == Mode::Dict);
+
+        QQmlApplicationEngine engine;
+        engine.rootContext()->setContextProperty(QStringLiteral("app"),
+                                                 &controller);
+        engine.rootContext()->setContextProperty(QStringLiteral("sysTheme"),
+                                                 &sysTheme);
+        // 入口 = 模块名 + 主组件名,与 CMakeLists 的 qt_add_qml_module 一致
+        engine.loadFromModule(QStringLiteral("Bangke.Pages"),
+                              QStringLiteral("Main"));
+        // 兜底:qmldir 解析不到时按 qrc 路径直载(源文件在 qml/ 子目录下走的就是这条)
+        if (engine.rootObjects().isEmpty())
+          engine.load(QUrl(QStringLiteral(
+              "qrc:/qt/qml/Bangke/Pages/qml/Main.qml")));
+        if (engine.rootObjects().isEmpty())
+          ret = 1;
+        else
+          ret = app.exec();
         break;
       }
     }

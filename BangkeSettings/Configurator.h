@@ -1,6 +1,13 @@
 #pragma once
 
-class Configurator {
+#include <QObject>
+#include <QString>
+
+// 提示（原先直接弹 QMessageBox）改走信号：GUI 侧由 AppController 转给 QML，
+// CLI 侧（/deploy /sync /install）由 main 退回 Win32 对话框。
+class Configurator : public QObject {
+  Q_OBJECT
+
  public:
   Configurator();
   ~Configurator();
@@ -25,6 +32,9 @@ class Configurator {
   // 窗口切走时必须调 EndDictSession 恢复服务
   bool BeginDictSession();
   void EndDictSession();
+
+ signals:
+  void info(const QString& title, const QString& body);
 
  private:
   void* m_hDictMutex = nullptr;
