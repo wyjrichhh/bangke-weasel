@@ -33,12 +33,26 @@ static QScrollArea* wrapInScroll(QWidget* page) {
   return scroll;
 }
 
+namespace {
+// 页头文案与侧栏条目同一份来源 —— 分开写迟早对不上
+const struct {
+  const char* title;
+  const char* sub;
+} kPages[] = {
+    {"通用设置", "候选数量、Shift 键行为与切换提示"},
+    {"界面样式", "配色、字体、候选窗排列与排版微调"},
+    {"AI 预测", "模型、触发条件与候选插入方式"},
+    {"高级", "方案选单、用户词典与快捷入口"},
+};
+constexpr int kPageCount = sizeof(kPages) / sizeof(kPages[0]);
+}  // namespace
+
 MainWindow::MainWindow(Configurator* configurator, bool openDictPage,
                        QWidget* parent)
     : QMainWindow(parent), configurator_(configurator) {
   setWindowTitle(QStringLiteral(u"蚌壳拼音 · 设置"));
-  resize(680, 460);
-  setMinimumSize(600, 400);
+  resize(760, 560);
+  setMinimumSize(700, 500);
 
   switcherPage_ = new SwitcherPage(this);
   generalPage_ = new GeneralPage(this);
@@ -81,11 +95,28 @@ MainWindow::MainWindow(Configurator* configurator, bool openDictPage,
 
   nav_ = new QListWidget(this);
   nav_->setObjectName(QStringLiteral("nav"));
-  nav_->setFixedWidth(112);
+  nav_->setFixedWidth(184);
   nav_->setFrameShape(QFrame::NoFrame);
   nav_->setSpacing(2);
-  nav_->addItems({QStringLiteral(u"通用设置"), QStringLiteral(u"界面样式"), QStringLiteral(u"AI 预测"), QStringLiteral(u"高级")});
+  for (int i = 0; i < kPageCount; ++i) {
+    auto* item = new QListWidgetItem(QString::fromUtf8(kPages[i].title));
+    item->setIcon(makeNavIcon(i));
+    nav_->addItem(item);
+  }
   nav_->setCurrentRow(openDictPage ? 3 : 0);
+
+  // 页头:标题 + 一句说明。放在滚动区外,翻卡片时它不动
+  pageTitle_ = new QLabel(this);
+  pageTitle_->setObjectName(QStringLiteral("pageTitle"));
+  pageSub_ = new QLabel(this);
+  pageSub_->setObjectName(QStringLiteral("pageSub"));
+  auto* right = new QWidget(this);
+  auto* rightLayout = new QVBoxLayout(right);
+  rightLayout->setContentsMargins(0, 0, 0, 0);
+  rightLayout->setSpacing(14);
+  rightLayout->addWidget(pageTitle_);
+  rightLayout->addWidget(pageSub_);
+  rightLayout->addWidget(stack_, 1);
 
   auto* saveBtn = new QPushButton(QStringLiteral(u"保存"), this);
   saveBtn->setObjectName(QStringLiteral("primary"));
@@ -98,12 +129,12 @@ MainWindow::MainWindow(Configurator* configurator, bool openDictPage,
   auto* body = new QWidget(this);
   body->setObjectName(QStringLiteral("pageRoot"));
   auto* bodyLayout = new QVBoxLayout(body);
-  bodyLayout->setContentsMargins(16, 12, 16, 10);
-  bodyLayout->setSpacing(10);
+  bodyLayout->setContentsMargins(18, 16, 18, 12);
+  bodyLayout->setSpacing(12);
   auto* topRow = new QHBoxLayout();
-  topRow->setSpacing(12);
+  topRow->setSpacing(22);
   topRow->addWidget(nav_);
-  topRow->addWidget(stack_, 1);
+  topRow->addWidget(right, 1);
   bodyLayout->addLayout(topRow, 1);
   auto* line = new QFrame(body);
   line->setObjectName(QStringLiteral("line"));
@@ -137,6 +168,10 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void* message,
 
 void MainWindow::onPageChanged(int index) {
   stack_->setCurrentIndex(index);
+  if (index >= 0 && index < kPageCount) {
+    pageTitle_->setText(QString::fromUtf8(kPages[index].title));
+    pageSub_->setText(QString::fromUtf8(kPages[index].sub));
+  }
   dictPage_->setSessionActive(false);
   // 离开高级页立即结束部署会话:BeginDictSession 拿住的 BangkeDeployerMutex
   // 若握到关窗,之后点「保存并重新部署」必撞"另一项部署任务"

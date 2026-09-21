@@ -4,6 +4,7 @@
 #include <QMainWindow>
 
 class Configurator;
+class QLabel;
 class QListWidget;
 class QStackedWidget;
 class AIPage;
@@ -33,6 +34,8 @@ class MainWindow : public QMainWindow {
   Configurator* configurator_ = nullptr;
   QListWidget* nav_ = nullptr;
   QStackedWidget* stack_ = nullptr;
+  QLabel* pageTitle_ = nullptr;
+  QLabel* pageSub_ = nullptr;
   AIPage* aiPage_ = nullptr;
   GeneralPage* generalPage_ = nullptr;
   SwitcherPage* switcherPage_ = nullptr;

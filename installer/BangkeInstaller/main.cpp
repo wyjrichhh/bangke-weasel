@@ -164,20 +164,37 @@ class BusyBar : public QWidget {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
     p.setPen(Qt::NoPen);
-    p.setBrush(QColor(0x0b, 0x11, 0x19));
-    p.drawRoundedRect(rect(), 3, 3);
+    p.setBrush(QColor(0xE4, 0xE8, 0xE9));
+    p.drawRoundedRect(rect(), height() / 2.0, height() / 2.0);
+    if (m_value <= 0.0)
+      return;
+    const QRectF done(0, 0, width() * m_value, height());
+    p.setBrush(QColor(0x0E, 0x93, 0x84));
+    p.drawRoundedRect(done, height() / 2.0, height() / 2.0);
+    // 扫光只叠在已完成的那段上:部署阶段之间进度会停(FirstDeploy 可能几分钟),
+    // 完全静止看着像卡死,给它一点持续的动作
+    p.setClipRect(done);
     const qreal chunk = width() * 0.36;
     const qreal x = -chunk + (width() + chunk * 2) * m_phase;
     QLinearGradient g(x, 0, x + chunk, 0);
-    g.setColorAt(0.0, QColor(0x2f, 0x7c, 0xd6, 0));
-    g.setColorAt(0.5, QColor(0x4a, 0xa8, 0xf0));
-    g.setColorAt(1.0, QColor(0x2f, 0x7c, 0xd6, 0));
+    g.setColorAt(0.0, QColor(255, 255, 255, 0));
+    g.setColorAt(0.5, QColor(255, 255, 255, 110));
+    g.setColorAt(1.0, QColor(255, 255, 255, 0));
     p.setBrush(g);
-    p.drawRoundedRect(QRectF(x, 0, chunk, height()), 3, 3);
+    p.drawRect(done);
+  }
+
+  void setValue(qreal v) {
+    v = qBound(0.0, v, 1.0);
+    if (m_value == v)
+      return;
+    m_value = v;
+    update();
   }
 
  private:
   qreal m_phase = 0.0;
+  qreal m_value = 0.0;
 };
 
 // 完成页对勾:环先画出,勾/X 随笔画出
@@ -207,7 +224,7 @@ class CheckMark : public QWidget {
   void paintEvent(QPaintEvent*) override {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
-    const QColor c = m_ok ? QColor(0x4c, 0xc3, 0x8a) : QColor(0xe0, 0x56, 0x56);
+    const QColor c = m_ok ? QColor(0x0E, 0x93, 0x84) : QColor(0xE0, 0x56, 0x56);
     const QRectF r = rect().adjusted(6, 6, -6, -6);
     QPen pen(c, 3.2);
     pen.setCapStyle(Qt::RoundCap);
@@ -258,7 +275,7 @@ class CheckMark : public QWidget {
 class BeachScene : public QWidget {
  public:
   explicit BeachScene(QWidget* parent = nullptr) : QWidget(parent) {
-    setFixedSize(340, 200);
+    setFixedSize(320, 140); // 横向长条更像"舞台"
     setAttribute(Qt::WA_TransparentForMouseEvents);
     m_timer = new QTimer(this);
     connect(m_timer, &QTimer::timeout, this, [this] {
@@ -297,116 +314,57 @@ class BeachScene : public QWidget {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
     const int w = width(), h = height();
-    QPainterPath clip;
-    clip.addRoundedRect(rect(), 12, 12);
-    p.setClipPath(clip);
+    const QColor accent(0x0E, 0x93, 0x84);
+    const QColor soft(0xE4, 0xF3, 0xF1);
 
-    // 天空(晨光)
-    QLinearGradient sky(0, 0, 0, h * 0.42);
-    sky.setColorAt(0, QColor(0xff, 0xe8, 0xc2));
-    sky.setColorAt(1, QColor(0xff, 0xc9, 0x8f));
-    p.fillRect(QRect(0, 0, w, h * 0.42), sky);
-    // 太阳光晕
-    QRadialGradient sun(QPointF(w * 0.78, h * 0.15), 42);
-    sun.setColorAt(0, QColor(255, 250, 230, 220));
-    sun.setColorAt(1, QColor(255, 250, 230, 0));
-    p.setBrush(sun);
+    // 淡色底:托住蚌壳的那块"水面",不再画天空/太阳/沙滩那套插画
+    QPainterPath ground;
+    ground.addRoundedRect(QRectF(0, 0, w, h), 16, 16);
+    p.fillPath(ground, soft);
+
+    // 极简线描:下壳固定,上壳随进度抬起(m_open:0 闭 -> 1 开),中间一颗珠
+    const qreal cx = w / 2.0, cy = h * 0.66;
+    const qreal rx = w * 0.30, ry = h * 0.30;
+    const qreal lift = m_open * ry * 1.15;
+    const int breathe = int(1.4 * sin(m_wave * 6.28));
+
+    QPen pen(accent, 3.0);
+    pen.setCapStyle(Qt::RoundCap);
+    p.setBrush(Qt::NoBrush);
+
+    // 珍珠:随张开度浮现
     p.setPen(Qt::NoPen);
-    p.drawEllipse(QPointF(w * 0.78, h * 0.15), 42, 42);
+    p.setBrush(QColor(accent.red(), accent.green(), accent.blue(),
+                      int(60 + 150 * m_open)));
+    p.drawEllipse(QPointF(cx, cy - ry * 0.30), 7, 7);
 
-    // 海
-    QLinearGradient sea(0, h * 0.40, 0, h * 0.68);
-    sea.setColorAt(0, QColor(0x3f, 0x9e, 0xd9));
-    sea.setColorAt(1, QColor(0x1d, 0x6f, 0xa5));
-    p.fillRect(QRect(0, h * 0.40, w, h * 0.28), sea);
-    // 海面波光:两条微动细线
-    for (int i = 0; i < 2; ++i) {
-      const qreal y = h * (0.46 + i * 0.07);
-      p.setPen(QPen(QColor(255, 255, 255, 70), 1.4));
-      QPainterPath linePath;
-      for (int x = 0; x <= w; x += 8) {
-        const qreal yy = y + 1.6 * sin(x * 0.05 + m_wave * 6.28 + i * 2.0);
-        if (x == 0)
-          linePath.moveTo(x, yy);
-        else
-          linePath.lineTo(x, yy);
-      }
-      p.drawPath(linePath);
+    // 下壳(半椭圆开口向上)
+    p.setPen(pen);
+    QPainterPath lower;
+    lower.moveTo(cx - rx, cy + breathe);
+    lower.quadTo(cx, cy + ry * 1.15 + breathe, cx + rx, cy + breathe);
+    p.drawPath(lower);
+    // 壳上的两道纹
+    p.setPen(QPen(accent, 1.4));
+    for (int i = 1; i <= 2; ++i) {
+      const qreal t = i * 0.22;
+      QPainterPath rib;
+      rib.moveTo(cx - rx * (1 - t), cy + ry * 0.34 * t + breathe);
+      rib.quadTo(cx, cy + ry * (0.62 + 0.3 * t) + breathe,
+                 cx + rx * (1 - t), cy + ry * 0.34 * t + breathe);
+      p.drawPath(rib);
     }
 
-    // 沙滩
-    QLinearGradient sand(0, h * 0.66, 0, h);
-    sand.setColorAt(0, QColor(0xf4, 0xdc, 0xb6));
-    sand.setColorAt(1, QColor(0xe6, 0xc4, 0x92));
-    p.setPen(Qt::NoPen);
-    p.setBrush(sand);
-    p.drawChord(QRect((int)(-w * 0.2), (int)(h * 0.60), (int)(w * 1.4),
-                     (int)(h * 0.45)),
-                 0, 180 * 16);
-
-    // 浪沫:相位推进再退回,冲刷沙滩
-    const qreal wt = m_wave < 0.55 ? m_wave / 0.55 : 1.0 - (m_wave - 0.55) / 0.45;
-    const qreal eased = 1.0 - (1.0 - wt) * (1.0 - wt);
-    const qreal waveY = h * 0.72 - 24 * eased;
-    p.setPen(QPen(QColor(255, 255, 255, 90 + 90 * eased), 3.0, Qt::SolidLine,
-                  Qt::RoundCap));
-    QPainterPath foam;
-    for (int x = 0; x <= w; x += 8) {
-      const qreal yy = waveY + 2.2 * sin(x * 0.04 + m_wave * 6.28);
-      if (x == 0)
-        foam.moveTo(x, yy);
-      else
-        foam.lineTo(x, yy);
-    }
-    p.drawPath(foam);
-
-    // ---- 蚌壳(中心铰链,两瓣随 m_open 张开) ----
-    const QPointF hinge(w * 0.5, h * 0.86);
-    const int R = 52;
-    // 珍珠:开合度驱动大小与光晕
-    if (m_open > 0.05) {
-      const QPointF pc = hinge + QPointF(0, -R * 0.42 - 6 * m_open);
-      const int pr = 11 + 5 * m_open;
-      QRadialGradient glow(pc, pr * 2.2);
-      glow.setColorAt(0, QColor(255, 245, 250, 150 * m_open));
-      glow.setColorAt(1, QColor(255, 245, 250, 0));
-      p.setBrush(glow);
-      p.drawEllipse(pc, pr * 2.2, pr * 2.2);
-      QRadialGradient pearl(pc.x() - pr * 0.3, pc.y() - pr * 0.3, pr * 1.6);
-      pearl.setColorAt(0, QColor(0xff, 0xff, 0xff));
-      pearl.setColorAt(0.55, QColor(0xf8, 0xe3, 0xea));
-      pearl.setColorAt(1, QColor(0xd9, 0xb8, 0xc4));
-      p.setBrush(pearl);
-      p.drawEllipse(pc, pr, pr);
-    }
-    // 两瓣扇壳
-    for (int side = -1; side <= 1; side += 2) {
-      p.save();
-      p.translate(hinge);
-      p.rotate(side * (8 + 40 * m_open));  // 闭合时微张缝,进度满时 ~48°
-      QPainterPath valve;
-      valve.moveTo(0, 0);
-      valve.arcTo(QRectF(-R, -R, R * 2, R * 2), 90, -side * 58.0);
-      valve.closeSubpath();
-      QLinearGradient shellGrad(0, -R, 0, 0);
-      shellGrad.setColorAt(0, QColor(0xf7, 0xc9, 0x9b));
-      shellGrad.setColorAt(1, QColor(0xd1, 0x92, 0x5c));
-      p.setBrush(shellGrad);
-      p.setPen(QPen(QColor(0xb5, 0x7c, 0x48), 1.2));
-      p.drawPath(valve);
-      // 放射肋线
-      p.setPen(QPen(QColor(0xc0, 0x85, 0x50, 160), 1.0));
-      for (int k = 1; k <= 3; ++k) {
-        const qreal ang = (90 - side * (58.0 * k / 4.0)) * 3.14159 / 180.0;
-        p.drawLine(QPointF(0, 0),
-                   QPointF(R * 0.94 * cos(ang), -R * 0.94 * sin(ang)));
-      }
-      p.restore();
-    }
-    // 铰链阴影
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(0xb5, 0x8a, 0x5e, 90));
-    p.drawEllipse(hinge + QPointF(0, 3), R * 0.8, 7);
+    // 上壳(随进度抬起:从扣在下壳上,到完全张开)
+    p.save();
+    p.translate(cx, cy + breathe - lift * 0.5);
+    p.rotate(-14.0 * m_open);
+    QPainterPath upper;
+    upper.moveTo(-rx, 0);
+    upper.quadTo(0, -ry * 1.15, rx, 0);
+    p.setPen(pen);
+    p.drawPath(upper);
+    p.restore();
   }
 
  private:
@@ -430,13 +388,11 @@ class CloseButton : public QWidget {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
     p.setPen(Qt::NoPen);
-    // 静止:浅钢蓝胶囊,与深底拉开层次;悬停/按下:红系
-    p.setBrush(underMouse() ? QColor(0xd1, 0x34, 0x38)
-                            : (isDown() ? QColor(0x2a, 0x3a, 0x4e)
-                                        : QColor(0x2c, 0x3d, 0x52)));
-    p.drawRoundedRect(rect(), 6, 6);
-    QPen pen(isDown() ? QColor(0xff, 0xff, 0xff) : QColor(0xea, 0xf2, 0xfb),
-             1.7);
+    // 静止透明(白面板上不该有块色),悬停/按下才转红
+    const bool hot = underMouse() || isDown();
+    p.setBrush(hot ? QColor(0xE0, 0x56, 0x56) : Qt::transparent);
+    p.drawRoundedRect(rect(), 8, 8);
+    QPen pen(hot ? QColor(0xFF, 0xFF, 0xFF) : QColor(0x5C, 0x66, 0x68), 1.7);
     pen.setCapStyle(Qt::RoundCap);
     p.setPen(pen);
     // 叉:占按钮约 40%,四边留白均匀
@@ -476,11 +432,11 @@ class MainWindow : public QWidget {
     root->setContentsMargins(0, 0, 0, 0);
     auto* panel = new QFrame(this);
     panel->setObjectName("panel");
-    // 深底浮层感:面板投影
+    // 白面板的浮层感:轻投影。原来是给深色面板调的 alpha 150,白底上会糊成一圈黑晕
     auto* shadow = new QGraphicsDropShadowEffect(this);
-    shadow->setBlurRadius(48);
+    shadow->setBlurRadius(44);
     shadow->setOffset(0, 10);
-    shadow->setColor(QColor(0, 0, 0, 150));
+    shadow->setColor(QColor(16, 24, 26, 60));
     panel->setGraphicsEffect(shadow);
     root->setContentsMargins(18, 14, 18, 22);  // 给投影留边
     root->addWidget(panel);
@@ -713,6 +669,7 @@ class MainWindow : public QWidget {
       for (int i = 0; i < N; ++i) {
         if (!strcmp(bestKey, kOrder[i])) {
           m_scene->setProgress(i / (qreal)(N - 1));
+          m_bar->setValue(i / (qreal)(N - 1));
           break;
         }
       }
@@ -817,11 +774,11 @@ class MainWindow : public QWidget {
     box->setContentsMargins(36, 8, 36, 28);
     box->setSpacing(12);
 
-    auto* logo = new QLabel(QStringLiteral(u"蚌"), welcomePage_);
-    logo->setObjectName("logo");
-    logo->setAlignment(Qt::AlignCenter);
-    box->addSpacing(10);
-    box->addWidget(logo, 0, Qt::AlignHCenter);
+    // 蚌壳当主角:张开态(=就绪)的那张线描,底色就是它自己画的那块淡色"舞台"
+    auto* hero = new BeachScene(welcomePage_);
+    hero->setProgress(1.0);
+    box->addSpacing(6);
+    box->addWidget(hero, 0, Qt::AlignHCenter);
     box->addWidget(new QLabel(QStringLiteral(u"蚌壳拼音输入法"), welcomePage_), 0, Qt::AlignHCenter);
     auto* sub = new QLabel(QStringLiteral(u"Rime 内核 · Windows 原生 TSF · 蚌壳出品"), welcomePage_);
     sub->setObjectName("sub");
@@ -1021,29 +978,31 @@ int main(int argc, char* argv[]) {
   BootLog("QApplication up");
   QApplication::setApplicationName(QStringLiteral(u"蚌壳拼音安装器"));
 
+  // 与设置程序同一套语言:浅色 + teal、无渐变、发丝边 + 圆角。
+  // 原先是深 navy 面板 + 蓝色线性渐变 + 径向渐变图标块 —— 那是 WinRAR 那一代的语法,
+  // 也和设置程序不是一个体系。
   app.setStyleSheet(QStringLiteral(uR"(
-    QWidget { background: transparent; color: #e8ecf1; font-family: "Microsoft YaHei UI"; font-size: 14px; }
-    #panel { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #131b26, stop:1 #0d141d);
-             border-radius: 14px; border: 1px solid #243244; }
-    #title { font-size: 15px; color: #9fb6cd; }
-    #logo { min-width: 92px; min-height: 92px; max-width: 92px; max-height: 92px;
-            background: qradialgradient(cx:0.5, cy:0.35, radius:1.1, stop:0 #35618f, stop:1 #16233a);
-            border-radius: 24px; color: #eaf2fb; font-size: 52px; font-weight: 600;
-            border: 1px solid #3d5a82; }
-    #sub { color: #7e93a8; font-size: 12px; }
-    #warn { color: #e0a75e; font-size: 13px; }
-    QPushButton { background: #1b2736; border: 1px solid #2c3d52; border-radius: 8px; color: #dfe7ef; padding: 0 18px; }
-    QPushButton:hover { border-color: #4a9df0; color: #ffffff; }
-    QPushButton:disabled { color: #55637a; }
-    #accent { background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #2f7cd6, stop:1 #4aa8f0);
-              border: none; color: white; font-size: 15px; font-weight: 600; border-radius: 8px; }
-    #accent:hover { background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #3a8ae8, stop:1 #5cb5f7); }
-    #danger { color: #e08080; }
-    #danger:hover { border-color: #e05656; color: #ff9c9c; }
-    QProgressBar { background: #0b1119; border: none; border-radius: 3px; }
-    QProgressBar::chunk { background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #2f7cd6, stop:1 #4aa8f0); border-radius: 3px; }
-    QCheckBox { color: #9fb6cd; }
-    #finishTitle { font-size: 22px; font-weight: 600; color: #eaf2fb; }
+    QWidget { background: transparent; color: #14181A; font-family: "Microsoft YaHei UI"; font-size: 13px; }
+    #panel { background: #FFFFFF; border-radius: 16px; border: 1px solid #EBEEEF; }
+    #title { font-size: 20px; font-weight: 600; color: #14181A; }
+    #sub { color: #5C6668; font-size: 12.5px; }
+    #warn { color: #B4761F; font-size: 13px; }
+    #finishTitle { font-size: 22px; font-weight: 600; color: #14181A; }
+    QPushButton { background: #FFFFFF; border: 1px solid #DFE3E4; border-radius: 10px;
+                  color: #5C6668; padding: 0 18px; min-height: 38px; }
+    QPushButton:hover { border-color: #0E9384; color: #0A6A60; }
+    QPushButton:pressed { background: #F1F4F4; }
+    QPushButton:disabled { color: #8A9496; border-color: #EBEEEF; }
+    #accent { background: #0E9384; border: none; color: #FFFFFF; font-size: 14px;
+              font-weight: 600; border-radius: 10px; }
+    #accent:hover { background: #0B8175; }
+    #accent:pressed { background: #096B61; }
+    #accent:disabled { background: #E4F3F1; color: #8A9496; }
+    #danger { color: #C0392B; }
+    #danger:hover { border-color: #E05656; color: #E05656; }
+    QProgressBar { background: #E4E8E9; border: none; border-radius: 3px; }
+    QProgressBar::chunk { background: #0E9384; border-radius: 3px; }
+    QCheckBox { color: #5C6668; spacing: 8px; }
   )"));
 
   MainWindow w;
