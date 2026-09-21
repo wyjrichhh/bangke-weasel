@@ -286,7 +286,7 @@ inline std::string current_time() {
   return oss.str();
 }
 
-#define DEBUG                                                       \
+#define BK_DEBUG                                                    \
   (DebugStream() << "[" << current_time() << " " << __FILE__ << ":" \
                  << __LINE__ << "] ")
 

@@ -42,6 +42,8 @@ RowShell {
     anchors.verticalCenter: parent.verticalCenter
     implicitWidth: row.fieldWidth
     implicitHeight: Theme.controlHeight
+    topPadding: 0
+    bottomPadding: 0
     leftPadding: 11
     rightPadding: 25
     model: row.entries

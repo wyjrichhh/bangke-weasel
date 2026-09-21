@@ -334,14 +334,14 @@ void BangkePanel::_CaptureRect(CRect& rect) {
     return;
   }
   if (!::OpenClipboard(m_hWnd)) {
-    DEBUG << "_CaptureRect: OpenClipboard failed";
+    BK_DEBUG << "_CaptureRect: OpenClipboard failed";
     DeleteObject(bmp);
     ::ReleaseDC(NULL, ScreenDC);
     return;
   }
   EmptyClipboard();
   if (!SetClipboardData(CF_BITMAP, bmp)) {
-    DEBUG << "_CaptureRect: SetClipboardData failed";
+    BK_DEBUG << "_CaptureRect: SetClipboardData failed";
     DeleteObject(bmp);
   }
   CloseClipboard();
