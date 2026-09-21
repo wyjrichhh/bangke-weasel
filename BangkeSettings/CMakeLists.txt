@@ -100,7 +100,11 @@ target_link_libraries(BangkeSettings PRIVATE
   rime.lib
 )
 
+# NOMINMAX:windows.h 默认把 min/max 定义成宏,而 Qt 的头里用 std::numeric_limits<int>::max()
+# 这类写法(QtCore/qvariant.h 一被它污染就是一串"语法错误")。本目标的源文件里
+# 只要有一个先经 rime_api.h/BangkeUtility.h 摸到 windows.h,后续首次包含的 Qt 头就炸。
 target_compile_definitions(BangkeSettings PRIVATE
+  NOMINMAX
   VERSION_MAJOR=${VERSION_MAJOR}
   VERSION_MINOR=${VERSION_MINOR}
   VERSION_PATCH=${VERSION_PATCH}
