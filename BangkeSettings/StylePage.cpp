@@ -578,6 +578,11 @@ void StylePage::updatePreview() {
 }
 
 bool StylePage::save() {
+  // 没载过值的页没有「用户改动」可言：控件还停在 Qt 默认值，而每项绑定的 init 是空串，
+  // 逐项比较会把它们全判成「改过」，把默认值写进配置。曾经发生过——在 AI 页改一个开关
+  // 后保存，saveAndDeploy 连带保存本页，label_font_point 被写成 0，候选序号就此消失。
+  if (!loaded_)
+    return false;
   bool changed = false;
   std::string scheme = schemeCombo_->currentData().toString().toStdString();
   if (!scheme.empty() && scheme != activeScheme_) {

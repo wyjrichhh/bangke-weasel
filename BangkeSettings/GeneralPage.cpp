@@ -119,9 +119,12 @@ void GeneralPage::load() {
     if (shiftR_->itemData(i).toString() == initShiftR_)
       shiftR_->setCurrentIndex(i);
   }
+  loaded_ = true;
 }
 
 bool GeneralPage::save() {
+  if (!loaded_)
+    return false;
   const int ps = pageSize_->value();
   const QString sl = shiftL_->currentData().toString();
   const QString sr = shiftR_->currentData().toString();

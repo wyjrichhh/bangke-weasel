@@ -35,4 +35,7 @@ class GeneralPage : public QWidget {
   bool initCommentHints_ = false;
   bool initNotifications_ = false;
   int initNotificationsTime_ = 0;
+  // 载过值才允许保存：init* 都是载入时记下的,没载过就还是 0/空,与控件默认值不等,
+  // 保存会把默认值写进配置(见 StylePage::save 同类事故)
+  bool loaded_ = false;
 };
