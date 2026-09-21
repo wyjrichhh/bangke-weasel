@@ -1,4 +1,4 @@
-# 从 output\ 递归生成 Files.wxs（BangkeFiles ComponentGroup）
+﻿# 从 output\ 递归生成 Files.wxs（BangkeFiles ComponentGroup）
 # 排除项由 $exclude 定义；bangkex64.dll 由主 wxs 单独装到 System32
 param(
   [string]$OutputDir = "output",
@@ -33,9 +33,10 @@ $files = Get-ChildItem $root -Recurse -File | Where-Object {
 
 function DirId([string]$rel) {
   if ($rel -eq '.') { return 'INSTALLDIR' }
-  # 连字符在 WiX 标识符里非法(如 zh-base-ct2-int8 目录),一并换下划线;
-  # 只影响 Id,目录真实 Name 不动
-  return 'dir_' + ($rel -replace '[\\./ -]', '_')
+  # WiX 标识符只收 A-Za-z0-9_，而目录名什么都可能有：连字符(zh-base-ct2-int8)、
+  # 空格，以及 Qt qml 树里的 '+' (QtQuick/Dialogs/quickimpl/qml/+Material 这类)。
+  # 一律兜底成下划线；只影响 Id，目录真实 Name 不动
+  return 'dir_' + ($rel -replace '[^A-Za-z0-9_]', '_')
 }
 
 # 目录树登记：rel 为 output 下的相对路径（'.' 为根）
