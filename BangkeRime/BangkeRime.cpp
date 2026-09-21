@@ -195,7 +195,7 @@ void BangkeRimeHandler::_Initialize(bool ignore_deployer) {
 }
 
 void BangkeRimeHandler::Finalize() {
-  _StopAiPump();
+  _RequestStopAiPump(0);
   m_active_session = 0;
   m_disabled = true;
   m_session_status_map.clear();
@@ -288,8 +288,7 @@ DWORD BangkeRimeHandler::AddSession(LPWSTR buffer, EatLine eat) {
 }
 
 DWORD BangkeRimeHandler::RemoveSession(BangkeSessionId ipc_id) {
-  if (m_ai_pump_ipc_id == ipc_id)
-    _StopAiPump();
+  _RequestStopAiPump(ipc_id);
   {
     std::lock_guard<std::mutex> lock(s_snap_handles_mutex);
     auto it = s_snap_handles.find((DWORD)ipc_id);
@@ -500,8 +499,7 @@ void BangkeRimeHandler::FocusOut(DWORD param, BangkeSessionId ipc_id) {
   if (m_ui)
     m_ui->Hide();
   // 焦点走了就没有要顶的候选栏了，别让泵继续空转
-  if (m_ai_pump_ipc_id == ipc_id)
-    _StopAiPump();
+  _RequestStopAiPump(ipc_id);
   m_active_session = 0;
 }
 
@@ -617,10 +615,15 @@ void BangkeRimeHandler::SetEventWindow(HWND wnd) {
 
 void BangkeRimeHandler::OnDeferredEvent(int event,
                                             uintptr_t rime_session_id) {
+  // 这里传的是 ipc 会话号，不是 rime 会话号：泵按 ipc 号认会话，rime 会话号是
+  // 对象地址，销毁后新建的会话可能复用同一个值
   if (event == BK_EVENT_AI_PUMP) {
-    // 这里传的是 ipc 会话号，不是 rime 会话号：泵按 ipc 号认会话，rime 会话号是
-    // 对象地址，销毁后新建的会话可能复用同一个值
     AiPumpArm((BangkeSessionId)rime_session_id);
+  } else if (event == BK_EVENT_AI_PUMP_STOP) {
+    const BangkeSessionId ipc_id = (BangkeSessionId)rime_session_id;
+    // 会话 A 退出时泵可能已经在为 B 跑，只有对得上才停
+    if (ipc_id == 0 || ipc_id == m_ai_pump_ipc_id)
+      _StopAiPump();
   }
 }
 
@@ -663,25 +666,35 @@ void BangkeRimeHandler::_MaybeRequestAiPump(BangkeSessionId ipc_id,
 }
 
 void BangkeRimeHandler::AiPumpArm(BangkeSessionId ipc_id) {
-  std::lock_guard<std::recursive_mutex> lock(ApiMutex());
-  if (!m_event_wnd || m_disabled)
+  if (!m_event_wnd)
     return;
-  // 用 find 不用 operator[]：后者会插进一个 session_id=0 的幽灵会话
-  auto it = m_session_status_map.find(ipc_id);
-  if (it == m_session_status_map.end() || !it->second.session_id)
-    return;
+  // 这里绝不能去取 ApiMutex，哪怕只是读一眼会话表。
+  //
+  // 本函数跑在消息循环线程上，而面板窗口的线程也是它。管道线程是在持着 ApiMutex 的
+  // 情况下调 SetWindowPos 挪面板的——那是一次同步的跨线程窗口调用，要等本线程把窗口
+  // 消息处理完。本线程若在等 ApiMutex，两边就互等成永久死锁：服务端进程还在，管道却
+  // 再也不回话，之后每条请求都堵在 API 串行权上。
+  //
+  // 泵状态本来就只归消息循环线程，不需要锁；会话有效性交给 AiPumpTick（它拿得到锁才
+  // 校验，拿不到就下一拍再说）。
+  //
   // 已经在为该会话跑就别再 SetTimer：同 id 再设一次是重置间隔，连打快过间隔时
   // 定时器永远等不到触发，AI 候选就再也浮不出来
   if (m_ai_pump_ipc_id == ipc_id && m_ai_pump_deadline)
     return;
   m_ai_pump_ipc_id = ipc_id;
   m_ai_pump_deadline = GetTickCount() + kAiPumpTimeoutMs;
-  SetTimer(m_event_wnd, kAiPumpTimerId, kAiPumpIntervalMs, nullptr);
+  m_ai_pump_interval_ms = kAiPumpIntervalMs;
+  SetTimer(m_event_wnd, kAiPumpTimerId, m_ai_pump_interval_ms, nullptr);
 }
 
 void BangkeRimeHandler::AiPumpTick() {
-  std::lock_guard<std::recursive_mutex> lock(ApiMutex());
-  if (!m_event_wnd) {
+  // 只试不抢：本函数的调用者是消息循环线程，死等 ApiMutex 会和 AiPumpArm 里说的那个
+  // 环撞上。泵本来就是轮询，让出一拍没有任何代价。
+  std::unique_lock<std::recursive_mutex> lock(ApiMutex(), std::try_to_lock);
+  if (!lock.owns_lock())
+    return;
+  if (!m_event_wnd || m_disabled) {
     _StopAiPump();
     return;
   }
@@ -699,6 +712,11 @@ void BangkeRimeHandler::AiPumpTick() {
     _StopAiPump();
     return;
   }
+  // 下一拍退避一档。放在重排之前：重排之后结果若已落地就地收工，这一档用不上。
+  m_ai_pump_interval_ms *= 2;
+  if (m_ai_pump_interval_ms > kAiPumpMaxIntervalMs)
+    m_ai_pump_interval_ms = kAiPumpMaxIntervalMs;
+  SetTimer(m_event_wnd, kAiPumpTimerId, m_ai_pump_interval_ms, nullptr);
   // 任何 option 变更都会让 ConcreteEngine::OnOptionUpdate 在调用线程上跑
   // RefreshNonConfirmedComposition —— 正是要的那次重排，且在正确的线程上。
   // soft_cursor 是本代码本就持有的开关，重设成同值无副作用。
@@ -727,6 +745,16 @@ void BangkeRimeHandler::_StopAiPump() {
     KillTimer(m_event_wnd, kAiPumpTimerId);
   m_ai_pump_ipc_id = 0;
   m_ai_pump_deadline = 0;
+  m_ai_pump_interval_ms = kAiPumpIntervalMs;
+}
+
+// 其它线程（会话销毁、焦点离开）不能直接 _StopAiPump：泵状态只归消息循环线程，
+// 就地改会和 AiPumpArm 抢。交给消息循环线程去停。
+void BangkeRimeHandler::_RequestStopAiPump(BangkeSessionId ipc_id) {
+  if (!m_event_wnd)
+    return;
+  PostMessageW(m_event_wnd, WM_BK_RIME_EVENT, BK_EVENT_AI_PUMP_STOP,
+               (LPARAM)ipc_id);
 }
 
 void BangkeRimeHandler::_ReadClientInfo(BangkeSessionId ipc_id,

@@ -40,6 +40,8 @@ enum BANGKE_IPC_COMMAND {
 #define WM_BK_RIME_EVENT (WM_APP + 0x42)
 enum BkRimeEvent {
   BK_EVENT_AI_PUMP = 1,  // 有推理在途（属性 ai_predict/pending），起泵把候选顶出来
+  // 停泵也要走这条路：泵状态只归消息循环线程，别的线程直接改会和 AiPumpArm 抢
+  BK_EVENT_AI_PUMP_STOP = 2,  // lParam = 要停的 ipc 会话号；0 表示无条件停
 };
 
 namespace bangke {

@@ -93,7 +93,7 @@ class BangkeRimeHandler : public bangke::RequestHandler {
   virtual void UpdateColorTheme(BOOL darkMode);
   void SetEventWindow(HWND wnd) override;
   void OnDeferredEvent(int event, uintptr_t rime_session_id) override;
-  // AI 泵的两半，只在服务端消息循环线程上跑（见 _StopAiPump 上方注释）
+  // AI 泵的两半，只在服务端消息循环线程上跑（见 kAiPumpTimerId 处注释）
   void AiPumpArm(DWORD ipc_id) override;
   void AiPumpTick() override;
 
@@ -127,6 +127,7 @@ class BangkeRimeHandler : public bangke::RequestHandler {
   void _UpdateInlinePreeditStatus(BangkeSessionId ipc_id);
 
   void _StopAiPump();
+  void _RequestStopAiPump(BangkeSessionId ipc_id);
   bool _IsAiPending(RimeSessionId session_id);
   void _MaybeRequestAiPump(BangkeSessionId ipc_id, RimeSessionId session_id);
 
@@ -163,12 +164,19 @@ class BangkeRimeHandler : public bangke::RequestHandler {
   // Context/Engine 不是线程安全的）。
   //
   // 泵只在服务端消息循环线程上起停与触发：SetTimer/KillTimer 和泵状态因此不需要跨线程
-  // 同步。单次推理实测 p50 约 90ms，但长尾到 5s+，超时给够，否则长尾预测永远等不到。
+  // 同步。但取 API 串行权只许 try_lock——管道线程持有它时可能正阻塞在 SetWindowPos 这类
+  // 跨线程窗口调用上，而那个调用等的正是本线程，死等就成环（见 AiPumpArm）。
+  //
+  // 每拍都是一整趟 Compose：结果落没落地只能靠 Compose 去问，pending 是插件在 Query 里
+  // 写的、Query 只在 Compose 里跑。所以逐拍退避——推理 p50 约 90ms，首拍 150ms 够用；
+  // 长尾到 5s+，超时得给够否则永远等不到，退避把这一窗的 Compose 从几十趟压到个位数。
   static constexpr UINT_PTR kAiPumpTimerId = 0x424B4149;  // 'BKAI'
   static constexpr UINT kAiPumpIntervalMs = 150;
+  static constexpr UINT kAiPumpMaxIntervalMs = 1000;
   static constexpr DWORD kAiPumpTimeoutMs = 10000;
   BangkeSessionId m_ai_pump_ipc_id = 0;
   DWORD m_ai_pump_deadline = 0;
+  UINT m_ai_pump_interval_ms = kAiPumpIntervalMs;
   static std::string m_message_type;
   static std::string m_message_value;
   static std::string m_message_label;
