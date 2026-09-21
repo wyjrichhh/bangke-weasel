@@ -684,8 +684,7 @@ void BangkeRimeHandler::AiPumpArm(BangkeSessionId ipc_id) {
     return;
   m_ai_pump_ipc_id = ipc_id;
   m_ai_pump_deadline = GetTickCount() + kAiPumpTimeoutMs;
-  m_ai_pump_interval_ms = kAiPumpIntervalMs;
-  SetTimer(m_event_wnd, kAiPumpTimerId, m_ai_pump_interval_ms, nullptr);
+  SetTimer(m_event_wnd, kAiPumpTimerId, kAiPumpIntervalMs, nullptr);
 }
 
 void BangkeRimeHandler::AiPumpTick() {
@@ -712,11 +711,6 @@ void BangkeRimeHandler::AiPumpTick() {
     _StopAiPump();
     return;
   }
-  // 下一拍退避一档。放在重排之前：重排之后结果若已落地就地收工，这一档用不上。
-  m_ai_pump_interval_ms *= 2;
-  if (m_ai_pump_interval_ms > kAiPumpMaxIntervalMs)
-    m_ai_pump_interval_ms = kAiPumpMaxIntervalMs;
-  SetTimer(m_event_wnd, kAiPumpTimerId, m_ai_pump_interval_ms, nullptr);
   // 任何 option 变更都会让 ConcreteEngine::OnOptionUpdate 在调用线程上跑
   // RefreshNonConfirmedComposition —— 正是要的那次重排，且在正确的线程上。
   // soft_cursor 是本代码本就持有的开关，重设成同值无副作用。
@@ -745,7 +739,6 @@ void BangkeRimeHandler::_StopAiPump() {
     KillTimer(m_event_wnd, kAiPumpTimerId);
   m_ai_pump_ipc_id = 0;
   m_ai_pump_deadline = 0;
-  m_ai_pump_interval_ms = kAiPumpIntervalMs;
 }
 
 // 其它线程（会话销毁、焦点离开）不能直接 _StopAiPump：泵状态只归消息循环线程，
