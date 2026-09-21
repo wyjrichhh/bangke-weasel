@@ -280,23 +280,6 @@ void BangkeTSF::_AsyncRefresh(UINT_PTR seq) {
                                 context.get(), &status, &config,
                                 &_cand->style()))
     return;
-  {  // TEMP-TRACE: 推送应用判定
-    wchar_t p[MAX_PATH] = {0};
-    ExpandEnvironmentStringsW(L"%TEMP%\\bk_push_trace.log", p, MAX_PATH);
-    HANDLE f = CreateFileW(p, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                           NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (f != INVALID_HANDLE_VALUE) {
-      char line[160];
-      snprintf(line, sizeof(line),
-               "[%u] push serial=%u floor=%u candies=%d %s\r\n",
-               GetCurrentProcessId(), hdr.key_serial, _last_applied_serial,
-               (int)context->cinfo.candies.size(),
-               hdr.key_serial < _last_applied_serial ? "DROP-STALE" : "APPLY");
-      DWORD w;
-      WriteFile(f, line, (DWORD)strlen(line), &w, NULL);
-      CloseHandle(f);
-    }
-  }
   if (hdr.key_serial < _last_applied_serial)
     return;
   _UpdateUI(*context, status);
