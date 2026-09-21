@@ -3,7 +3,8 @@ import QtQuick.Controls
 import Bangke.Pages
 
 // 数字行:可键入的窄框 + 右侧上下两个小三角(Basic style 默认那两个太大)。
-// 后缀(如 " ms")跟值一起显示在框里,所以 validator 不能再用 IntValidator:空格会被挡掉。
+// 后缀(如 " ms")跟值一起显示在框里,IntValidator 会把空格也挡掉,而 Qt6 已没有
+// RegExpValidator —— 所以不挂 validator,改在键入时过滤。
 RowShell {
   id: row
   property int value: 0
@@ -39,8 +40,6 @@ RowShell {
       return isNaN(parsed) ? spin.value : parsed
     }
 
-    validator: RegExpValidator { regExp: /[-0-9 ]*/ }
-
     contentItem: TextInput {
       text: spin.textFromValue(spin.value, spin.locale)
       font.family: Theme.fontFamily
@@ -50,9 +49,14 @@ RowShell {
       selectedTextColor: Theme.onAccent
       verticalAlignment: TextInput.AlignVCenter
       readOnly: !spin.editable
-      validator: spin.validator
       inputMethodHints: Qt.ImhFormattedNumbersOnly
       selectByMouse: true
+      // 只放行数字、负号与空格(空格留给后缀),顶掉 RegExpValidator 那份
+      onTextEdited: {
+        var filtered = text.replace(/[^-0-9 ]/g, "")
+        if (filtered !== text)
+          text = filtered
+      }
       // 键入会顶掉 text 上的绑定,编辑结束再挂回去,顺带把 "12abc" 归整成 "12 ms"
       onEditingFinished: {
         spin.value = spin.valueFromText(text, spin.locale)
