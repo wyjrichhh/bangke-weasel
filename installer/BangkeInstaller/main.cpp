@@ -184,6 +184,7 @@ class BusyBar : public QWidget {
     p.drawRect(done);
   }
 
+ public:
   void setValue(qreal v) {
     v = qBound(0.0, v, 1.0);
     if (m_value == v)
