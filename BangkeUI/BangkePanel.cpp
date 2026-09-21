@@ -1155,6 +1155,7 @@ void BangkePanel::DoPaint() {
                DI_NORMAL);
     drawn = true;
   }
+  m_has_content = drawn;
   /* Nothing drawn, hide candidate window */
   if (!drawn)
     ::ShowWindow(m_hWnd, SW_HIDE);

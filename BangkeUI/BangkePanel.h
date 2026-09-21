@@ -40,7 +40,18 @@ class BangkePanel {
   void DoPaint();
   bool GetIsReposition() { return m_istorepos; }
   void RedrawWindow();
-  void Show(int cmd) { if (IsWindow()) ::ShowWindow(m_hWnd, cmd); }
+  // 有内容才允许显示。DoPaint 在什么都没画出来时已经 SW_HIDE，若这里照旧
+  // SW_SHOWNA，就会把上一次 UpdateLayeredWindow 留在窗口上的旧位图重新露出来——
+  // ai_only 推理期间菜单是空的，用户看到的就是「候选框没消失、露出一块」。
+  // 返回窗口是否已可见，调用方据它维护自己的 shown 状态。
+  bool Show(int cmd) {
+    if (!IsWindow())
+      return false;
+    if (cmd != SW_HIDE && !m_has_content)
+      return false;
+    ::ShowWindow(m_hWnd, cmd);
+    return cmd != SW_HIDE;
+  }
   HWND hwnd() const { return m_hWnd; }
 
   static VOID CALLBACK OnTimer(_In_ HWND hwnd,
@@ -133,6 +144,8 @@ class BangkePanel {
   BYTE m_lastCandidateCount = 0;
 
   bool hide_candidates = false;
+  // 上一帧 DoPaint 是否真画出了东西（与末尾的 !drawn -> SW_HIDE 同源）
+  bool m_has_content = false;
   bool m_sticky = false;
   PDWR pDWR;
   std::function<void(size_t* const, size_t* const, bool* const, bool* const)>&

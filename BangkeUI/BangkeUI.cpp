@@ -39,7 +39,9 @@ UINT_PTR UIImpl::timer = 0;
 void UIImpl::Show() {
   if (!panel.IsWindow())
     return;
-  panel.Show(SW_SHOWNA);
+  // 面板判定没内容可画时窗口是隐藏的，这里不能再置 shown：TSF 会照它判断候选窗状态
+  if (!panel.Show(SW_SHOWNA))
+    return;
   shown = true;
   if (timer) {
     KillTimer(panel.hwnd(), AUTOHIDE_TIMER);
@@ -62,7 +64,8 @@ void UIImpl::ShowWithTimeout(size_t millisec) {
   if (!panel.IsWindow())
     return;
   DLOG(INFO) << "ShowWithTimeout: " << millisec;
-  panel.Show(SW_SHOWNA);
+  if (!panel.Show(SW_SHOWNA))
+    return;
   shown = true;
   SetTimer(panel.hwnd(), AUTOHIDE_TIMER, static_cast<UINT>(millisec),
            &UIImpl::OnTimer);
@@ -146,7 +149,7 @@ bool UI::IsShown() const {
 
 void UI::PostSnapshotReady() {
   if (pimpl_)
-    ((BangkePanel*)pimpl_)->PostSnapshotReady();
+    pimpl_->panel.PostSnapshotReady();
 }
 
 void UI::SetAsyncRefresh(std::function<void(UINT_PTR)> cb) {
