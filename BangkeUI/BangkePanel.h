@@ -38,6 +38,7 @@ class BangkePanel {
   void MoveTo(RECT const& rc);
   void Refresh();
   void DoPaint();
+  void _SnapHighlightToPanel(CRect& rect, IsToRoundStruct& rd);
   bool GetIsReposition() { return m_istorepos; }
   void RedrawWindow();
   // 有内容才允许显示。DoPaint 在什么都没画出来时已经 SW_HIDE，若这里照旧

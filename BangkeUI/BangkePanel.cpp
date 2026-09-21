@@ -692,34 +692,58 @@ void BangkePanel::_HighlightBack(const CRect& rc,
                                  const COLORREF& bordercolor) {
   float fradius = (float)radius;
   IsToRoundStruct useRd(rd);
-  float strokeRadius = fradius;
-  if (rd.Hemispherical && type != BackType::BACKGROUND) {
-    strokeRadius = (float)(DPI_SCALE(m_style.round_corner_ex) -
-                           (DPI_SCALE(m_style.border) % 2
-                                ? DPI_SCALE(m_style.border) / 2
-                                : 0));
-  }
+  // 贴住面板外缘时(rd.Hemispherical)圆角必须用背景那一圈的半径:高亮和背景是两条
+  // 同心的弧,半径不同就错开,边上漏出一条背景色。描边再让出半个线宽(线以路径为中心
+  // 画),填充不让——原先只换了描边,填充仍旧用自己的半径,所以看着还是不贴合。
+  const bool matchOuter = rd.Hemispherical && type != BackType::BACKGROUND;
+  const float outerRadius = (float)DPI_SCALE(m_style.round_corner_ex);
+  const float fillRadius = type == BackType::BACKGROUND
+                               ? outerRadius
+                               : (matchOuter ? outerRadius : fradius);
+  float strokeRadius = fillRadius;
+  if (matchOuter && (DPI_SCALE(m_style.border) % 2))
+    strokeRadius -= DPI_SCALE(m_style.border) / 2;
   // 阴影
   if (DPI_SCALE(m_style.shadow_radius) && COLORNOTTRANSPARENT(shadowColor)) {
-    _DrawShadow(rc, shadowColor, fradius);
+    _DrawShadow(rc, shadowColor, fillRadius);
   }
   // 背景填充
   if (COLORNOTTRANSPARENT(color)) {
-    _FillRoundRect(rc, ColorFFromARGB(color),
-                   type == BackType::BACKGROUND
-                       ? (float)DPI_SCALE(m_style.round_corner_ex)
-                       : fradius,
-                   useRd);
+    _FillRoundRect(rc, ColorFFromARGB(color), fillRadius, useRd);
   }
   // 边框
   if (COLORNOTTRANSPARENT(bordercolor) && DPI_SCALE(m_style.border) > 0) {
     IsToRoundStruct borderRd;
-    _StrokeRoundRect(rc, ColorFFromARGB(bordercolor),
-                     type == BackType::BACKGROUND
-                         ? (float)DPI_SCALE(m_style.round_corner_ex)
-                         : strokeRadius,
-                     borderRd, (float)DPI_SCALE(m_style.border));
+    _StrokeRoundRect(rc, ColorFFromARGB(bordercolor), strokeRadius, borderRd,
+                     (float)DPI_SCALE(m_style.border));
   }
+}
+
+// 高亮贴到面板外缘的那几条边不再留内缩,并让圆角改用背景那一圈(见 _HighlightBack)。
+// 判据取自布局给的圆角信息:一条边的两个角都开着圆角,那条边就是窗口边——Layout 只为
+// 贴着窗口的角开圆角(StandardLayout 的 is_to_round_corner)。不对齐的话,
+// real_margin 与 hilite_padding 的差值(默认 12 vs 8)会在边缘留一条 4px 的缝。
+void BangkePanel::_SnapHighlightToPanel(CRect& rect, IsToRoundStruct& rd) {
+  const CRect bg = m_layout->GetContentRect();
+  bool atWindowEdge = false;
+  if (rd.IsTopLeftNeedToRound && rd.IsBottomLeftNeedToRound) {
+    rect.left = bg.left;
+    atWindowEdge = true;
+  }
+  if (rd.IsTopRightNeedToRound && rd.IsBottomRightNeedToRound) {
+    rect.right = bg.right;
+    atWindowEdge = true;
+  }
+  if (rd.IsTopLeftNeedToRound && rd.IsTopRightNeedToRound) {
+    rect.top = bg.top;
+    atWindowEdge = true;
+  }
+  if (rd.IsBottomLeftNeedToRound && rd.IsBottomRightNeedToRound) {
+    rect.bottom = bg.bottom;
+    atWindowEdge = true;
+  }
+  if (atWindowEdge)
+    rd.Hemispherical = true;
 }
 
 // draw preedit text, text only
@@ -902,6 +926,7 @@ bool BangkePanel::_DrawCandidates(bool back) {
       }
       rect.InflateRect(DPI_SCALE(m_style.hilite_padding_x),
                        DPI_SCALE(m_style.hilite_padding_y));
+      _SnapHighlightToPanel(rect, rd);
       _HighlightBack(rect, HALF_ALPHA_COLOR(m_style.hilited_candidate_back_color),
                      HALF_ALPHA_COLOR(m_style.hilited_candidate_shadow_color),
                      DPI_SCALE(m_style.round_corner), bkType, rd,
@@ -917,6 +942,7 @@ bool BangkePanel::_DrawCandidates(bool back) {
       }
       rect.InflateRect(DPI_SCALE(m_style.hilite_padding_x),
                        DPI_SCALE(m_style.hilite_padding_y));
+      _SnapHighlightToPanel(rect, rd);
       _HighlightBack(rect, m_style.hilited_candidate_back_color,
                      markSt ? m_style.hilited_candidate_shadow_color : 0,
                      DPI_SCALE(m_style.round_corner), bkType, rd,
