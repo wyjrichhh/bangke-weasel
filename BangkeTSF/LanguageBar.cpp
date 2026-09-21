@@ -113,11 +113,6 @@ void ShowToast(const std::wstring& text) {
 }
 }  // namespace
 
-static bool open(const std::wstring& path) {
-  return (uintptr_t)ShellExecuteW(NULL, L"open", path.c_str(), NULL, NULL,
-                                  SW_SHOWNORMAL) > 32;
-}
-
 CLangBarItemButton::CLangBarItemButton(com_ptr<BangkeTSF> pTextService,
                                        REFGUID guid,
                                        bangke::UIStyle& style)
@@ -389,36 +384,9 @@ void BangkeTSF::_LaunchSettings(const std::wstring& args) {
 
 // 菜单唯一派发点：全部命令在 dll 内就地处理，server 不再承载任何菜单逻辑
 void BangkeTSF::_ExecuteMenuCommand(UINT wID) {
-  std::wstring dir{};
   switch (wID) {
     case ID_BANGKETRAY_SETTINGS:
       _LaunchSettings(L"");
-      break;
-    case ID_BANGKETRAY_DICT_MANAGEMENT:
-      _LaunchSettings(L"/dict");
-      break;
-    case ID_BANGKETRAY_DEPLOY:
-      _LaunchSettings(L"/deploy");
-      break;
-    case ID_BANGKETRAY_SYNC:
-      _LaunchSettings(L"/sync");
-      break;
-    case ID_BANGKETRAY_USERCONFIG:
-      if (FAILED(RegGetStringValue(HKEY_CURRENT_USER, L"Software\\Bangke",
-                                   L"BangkeUserDir", dir)) ||
-          dir.empty()) {
-        WCHAR _path[MAX_PATH] = {0};
-        ExpandEnvironmentStringsW(L"%AppData%\\Bangke", _path, _countof(_path));
-        dir = std::wstring(_path);
-      }
-      if (!dir.empty() && fs::exists(dir))
-        open(dir);
-      else
-        MessageBoxW(NULL, (L"Not found: " + dir).c_str(), L"BangkeUserDir",
-                    MB_ICONERROR | MB_OK);
-      break;
-    case ID_BANGKETRAY_LOGDIR:
-      open(BangkeLogPath().wstring());
       break;
     case ID_BANGKETRAY_RERUN_SERVICE: {
       // 先停后启:旧实例持单实例互斥量,直接拉新实例会立即退出等于没重启
@@ -441,10 +409,6 @@ void BangkeTSF::_ExecuteMenuCommand(UINT wID) {
       ShowToast(L"输入法服务已重启");
       break;
     }
-    case ID_BANGKETRAY_QUIT:
-      m_client.ShutdownServer();
-      ShowToast(L"输入法服务已退出，下次按键时自动恢复");
-      break;
   }
 }
 
