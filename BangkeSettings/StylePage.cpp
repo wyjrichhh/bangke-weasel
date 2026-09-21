@@ -6,6 +6,7 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QFontDatabase>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPainter>
@@ -255,9 +256,13 @@ StylePage::StylePage(QWidget* parent) : QWidget(parent) {
   layout->addWidget(makeCard(QStringLiteral(u"自定义配色"), customCard));
 
   // ---- 字体 ----
-  auto* fontFace = new QLineEdit(this);
+  // 字体名从机器上装的字体里挑。首项是空值,与配置语义一致(空 = 跟随系统),
+  // 也就是原输入框那句占位提示
+  auto* fontFace = new QComboBox(this);
   fontFace->setFixedWidth(220);
-  fontFace->setPlaceholderText(QStringLiteral(u"留空跟随系统"));
+  fontFace->addItem(QStringLiteral(u"跟随系统"), QString());
+  for (const QString& family : QFontDatabase::families())
+    fontFace->addItem(family, family);
   auto* labelPoint = new QSpinBox(this);
   labelPoint->setRange(0, 48);
   auto* commentPoint = new QSpinBox(this);
@@ -277,7 +282,7 @@ StylePage::StylePage(QWidget* parent) : QWidget(parent) {
                       makeSettingRow(QStringLiteral(u"候选缩写长度"), abbrevLen,
                                      QStringLiteral(u"0 = 不缩写")),
                   })));
-  bindText("font_face", fontFace);
+  bindChoice("font_face", fontFace, /*keep_unknown=*/true);
   bindInt("label_font_point", labelPoint);
   bindInt("comment_font_point", commentPoint);
   bindInt("candidate_abbreviate_length", abbrevLen);
@@ -449,8 +454,10 @@ void StylePage::bindText(const char* key, QLineEdit* w) {
   styleControls_.push_back({StyleControl::Kind::Edit, key, w, {}});
 }
 
-void StylePage::bindChoice(const char* key, QComboBox* w) {
-  styleControls_.push_back({StyleControl::Kind::Combo, key, w, {}});
+void StylePage::bindChoice(const char* key, QComboBox* w, bool keep_unknown) {
+  StyleControl c{StyleControl::Kind::Combo, key, w, {}};
+  c.keep_unknown = keep_unknown;
+  styleControls_.push_back(c);
 }
 
 void StylePage::load() {
@@ -527,7 +534,11 @@ void StylePage::forceLoad() {
         auto* combo = static_cast<QComboBox*>(c.widget);
         const QString v = QString::fromStdString(settings_.GetStyleString(
             c.key, combo->currentData().toString().toStdString()));
-        const int i = combo->findData(v);
+        int i = combo->findData(v);
+        if (i < 0 && c.keep_unknown && !v.isEmpty()) {
+          combo->insertItem(0, v, v);
+          i = 0;
+        }
         combo->setCurrentIndex(i >= 0 ? i : 0);
         c.init = combo->currentData().toString().toStdString();
         break;

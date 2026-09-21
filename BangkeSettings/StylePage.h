@@ -54,11 +54,15 @@ class StylePage : public QWidget {
     std::string key;
     QWidget* widget = nullptr;
     std::string init;  // 载入时的值,保存时只写变了的
+    // 允许存着列表里没有的值(字体选择器:机器上可能没装配置里写的那款)。
+    // 载入时这样的值会被插回列表,否则 setCurrentIndex(0) 会把它显示成
+    // 列表首项——看着像没设,存回去却还是旧值
+    bool keep_unknown = false;
   };
   void bindBool(const char* key, QAbstractButton* w);
   void bindInt(const char* key, QSpinBox* w);
   void bindText(const char* key, QLineEdit* w);
-  void bindChoice(const char* key, QComboBox* w);
+  void bindChoice(const char* key, QComboBox* w, bool keep_unknown = false);
   std::vector<StyleControl> styleControls_;
 
   // 布局微调:键名 → 控件
