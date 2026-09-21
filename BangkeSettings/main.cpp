@@ -2,6 +2,7 @@
 
 #include <QFont>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -76,6 +77,8 @@ int main(int argc, char* argv[]) {
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral(u"蚌壳拼音·设置"));
     QGuiApplication::setOrganizationName(QStringLiteral("Bangke"));
+    // 标题栏图标:QML 的 Window 没设 icon 就落回 Windows 默认应用图标
+    app.setWindowIcon(QIcon(QStringLiteral(":/bangke.ico")));
 
     Mode mode = argc > 1 ? parseMode(QString::fromLocal8Bit(argv[1])) : Mode::Gui;
 

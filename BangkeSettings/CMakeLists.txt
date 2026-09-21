@@ -9,7 +9,8 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 # 版本数与图标绝对路径在 configure 阶段烘进 rc:
 # target_compile_definitions 不会到达 rc.exe,生成目录也让相对路径失锚
-get_filename_component(RC_ICON "${CMAKE_CURRENT_SOURCE_DIR}/../resource/bangke.ico" ABSOLUTE)
+set(BANGKE_ICON "${CMAKE_CURRENT_SOURCE_DIR}/../resource/bangke.ico")
+get_filename_component(RC_ICON "${BANGKE_ICON}" ABSOLUTE)
 string(REPLACE "/" "\\\\" RC_ICON "${RC_ICON}")
 configure_file(BangkeSettings.rc.in BangkeSettings.rc @ONLY)
 
@@ -52,6 +53,15 @@ qt_add_executable(BangkeSettings WIN32
   ${BANGKE_ROOT}/BangkeIPC/BangkeClientImpl.cpp
   ${BANGKE_ROOT}/BangkeIPC/PipeChannel.cpp
   ${BANGKE_ROOT}/BangkeRime/BangkeUtility.cpp
+)
+
+# 窗口图标和 exe 图标是两回事:rc 里那份只管资源管理器/任务栏的静态图标,标题栏取的是
+# QWindow::icon(为空则 QGuiApplication::windowIcon(),再空就落回 Windows 默认应用图标)。
+# QML 侧没有设置的地方,所以把同一个 .ico 也编进 Qt 资源,由 main.cpp 交给 QGuiApplication。
+set_source_files_properties(${BANGKE_ICON} PROPERTIES QT_RESOURCE_ALIAS bangke.ico)
+qt_add_resources(BangkeSettings "appicon"
+  PREFIX "/"
+  FILES ${BANGKE_ICON}
 )
 
 # QML 编进 qrc(不铺散文件)。用 glob 而不是逐个列:qml/ 下的文件由视图侧随意增删,
