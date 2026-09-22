@@ -17,7 +17,8 @@ $version = $msi.BaseName -replace '^BangkeSetup-', '' -replace '-x64$', ''
 $payload = [System.Collections.Generic.List[string]]::new()
 $payload.Add("BangkeInstaller.exe")
 $payload.Add($msi.Name)
-# dxcompiler/dxil 是 Qt6Gui 的直接依赖,漏了即启动即崩(windeployqt 铺过它们)
+# dxcompiler/dxil 只在 D3D12 后端下被 LoadLibrary(导入表里没有),本程序走 D3D11,
+# 所以 trim_output.ps1 会把它们从 output\ 删掉 —— 这里留着名字只是超集写法,Test-Path 会跳过
 # 设置程序改成 QML 之后还多出 Qt Quick 那一串 DLL:Qt6Qml 起手就解析 qml 树,
 # 缺一个就是启动即白屏。列的是超集,Test-Path 兜底 —— 没铺出来的自然跳过
 foreach ($n in @("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll", "Qt6Network.dll",
