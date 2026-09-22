@@ -403,6 +403,8 @@ rem ---------------------------------------------------------------------------
   rem --no-opengl-sw 保留:Qt6 的 Quick 走 RHI,D3D11 优先,且软件兜底是 CPU 光栅化,
   rem 不需要 Mesa 那份 opengl32sw.dll(约 20MB)。若哪天在无 D3D11 的机器上白屏,去掉它再打
   "%QT_DIR%\bin\windeployqt" --release --no-translations --no-system-d3d-compiler --no-opengl-sw --compiler-runtime --qmldir BangkeSettings output\BangkeSettings.exe
+  rem drop what nothing can load; the list and reasoning live in the script
+  powershell -NoProfile -ExecutionPolicy Bypass -File installer\trim_output.ps1 -OutputDir output
   if errorlevel 1 goto error
   exit /b
 :error
