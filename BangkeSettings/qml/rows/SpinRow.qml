@@ -23,7 +23,8 @@ RowShell {
     implicitWidth: row.fieldWidth
     implicitHeight: Theme.controlHeight
     leftPadding: 11
-    rightPadding: 4
+    // 给右侧那对三角留出位置(Basic 本来是按 up.indicator.width 算的,这里显式给)
+    rightPadding: 26
     from: row.min
     to: row.max
     value: row.value
@@ -66,8 +67,14 @@ RowShell {
       }
     }
 
+    // 指示器的位置得自己给:Basic/Fusion 的 delegate 都自带 x/y/height(模板不摆它们),
+    // 换成裸 Item 就丢了 —— 两个会一起塌到 (0,0) 且高度 0,▲▼ 叠在框顶边上成一团黑。
     up.indicator: Item {
+      x: spin.width - width - 1
+      y: 1
+      height: spin.height / 2 - 1
       implicitWidth: 22
+      implicitHeight: 10
 
       Txt {
         anchors.centerIn: parent
@@ -78,7 +85,11 @@ RowShell {
     }
 
     down.indicator: Item {
+      x: spin.width - width - 1
+      y: spin.height - height - 1
+      height: spin.height / 2 - 1
       implicitWidth: 22
+      implicitHeight: 10
 
       Txt {
         anchors.centerIn: parent
