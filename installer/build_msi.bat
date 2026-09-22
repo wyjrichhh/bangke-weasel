@@ -20,10 +20,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File installer\harvest.ps1 -Outpu
 if errorlevel 1 goto error
 
 "%WIXEXE%" extension remove -g WixToolset.UI.wixext >nul 2>&1
+"%WIXEXE%" extension remove -g WixToolset.Util.wixext >nul 2>&1
 "%WIXEXE%" extension add -g WixToolset.UI.wixext/5.0.2
+"%WIXEXE%" extension add -g WixToolset.Util.wixext/5.0.2
 if errorlevel 1 goto error
 
-"%WIXEXE%" build -arch x64 -ext WixToolset.UI.wixext installer\Bangke.wxs installer\Files.wxs ^
+"%WIXEXE%" build -arch x64 -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext installer\Bangke.wxs installer\Files.wxs ^
   -d Version=%BANGKE_VERSION% ^
   -d OutputDir=%BANGKE_ROOT%\output ^
   -d ResourceDir=%BANGKE_ROOT%\resource ^

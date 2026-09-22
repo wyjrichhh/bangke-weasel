@@ -1,4 +1,5 @@
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
   <Package Name="蚌壳拼音"
            Codepage="65001"
@@ -72,13 +73,10 @@
     </Component>
 
     <!--
-      自定义动作（deferred, noImpersonate）：
-      停服 → 卸注册 → 装文件 → 注册 → 首部署
+      自定义动作（deferred）：卸注册 → 装文件 → 注册 → 首部署
+      停服不在这条链上 —— 见下面的 util:CloseApplication
       Directory 型 EXE CA：工作目录即所引目录，System32 工具用相对名调用
     -->
-    <CustomAction Id="StopServer" Directory="System64Folder"
-                  ExeCommand="&quot;[System64Folder]taskkill.exe&quot; /f /im BangkeServer.exe"
-                  Return="ignore" Execute="deferred" Impersonate="no" />
     <!--
       regsvr32 必须以安装用户身份跑：DllRegisterServer 里的 RegisterProfile 是
       「把输入法加进当前用户的输入列表」的 API，以 SYSTEM 身份跑就加进了 SYSTEM 的列表
@@ -116,9 +114,24 @@
                   ExeCommand="&quot;[INSTALLDIR]BangkeSettings.exe&quot; /clearpending"
                   Return="ignore" Execute="deferred" Impersonate="no" />
 
+    <!--
+      停服改用 Restart Manager：原来是一条跑 taskkill.exe 的 CA，而 taskkill 是控制台程序
+      —— 从没有控制台的进程里拉起它，Windows 会新建一个控制台窗口，安装时那个一闪而过的
+      黑框就是它。这个元素由扩展自己的 CA 处理，不起控制台。
+      只对 Package 合法（不在 Component 下），且各项要显式给：RebootPrompt 默认为 yes
+      （会弹重启提示），TerminateProcess 收的是"进程退出码"而非布尔值，给了它 RebootPrompt
+      必须是 no。Timeout 默认 5 秒 —— 服务端不会应答关闭消息，等于白等，压到 2 秒。
+    -->
+    <util:CloseApplication Id="CloseServer"
+                           Target="BangkeServer.exe"
+                           CloseMessage="no"
+                           RebootPrompt="no"
+                           PromptToContinue="no"
+                           TerminateProcess="1"
+                           Timeout="2" />
+
     <InstallExecuteSequence>
-      <Custom Action="StopServer" After="InstallInitialize" />
-      <Custom Action="UnregisterTSF" After="StopServer" Condition="REMOVE" />
+      <Custom Action="UnregisterTSF" After="InstallInitialize" Condition="REMOVE" />
       <Custom Action="Cleanup" After="UnregisterTSF" Condition="REMOVE" />
       <!-- 须在 InstallFiles 之后：CA 用的 BangkeSettings.exe 由该步装入 -->
       <Custom Action="ClearPendingDelete" After="InstallFiles" Condition="NOT REMOVE" />
