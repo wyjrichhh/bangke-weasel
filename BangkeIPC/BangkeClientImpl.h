@@ -15,6 +15,7 @@ class ClientImpl {
   void StartSession();
   void EndSession();
   void StartMaintenance();
+  void ReloadStyle();
   void EndMaintenance();
   bool Echo();
   bool ProcessKeyEvent(KeyEvent const& keyEvent);

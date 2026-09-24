@@ -829,6 +829,12 @@ void BangkeRimeHandler::_GetCandidateInfo(CandidateInfo& cinfo,
   cinfo.is_last_page = ctx.menu.is_last_page;
 }
 
+void BangkeRimeHandler::ReloadStyle() {
+  // 样式热重载:按当前明暗重读 weasel 配置并推给全部会话 —— 不销毁
+  // 引擎、不重载词典与 AI 模型(那要十几秒),改配色/字号/布局毫秒级生效
+  UpdateColorTheme(m_current_dark_mode);
+}
+
 void BangkeRimeHandler::StartMaintenance() {
   // 部署要销毁 rime 会话,但客户端仍握着旧 ipc_id;不快照身份的话,
   // AI 推送(按 rime_sid 查表)会哑火到应用重抢焦点

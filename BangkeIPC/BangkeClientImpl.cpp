@@ -182,6 +182,10 @@ void ClientImpl::EndMaintenance() {
   session_id = 0;
 }
 
+void ClientImpl::ReloadStyle() {
+  _SendMessage(BANGKE_IPC_RELOAD_STYLE, 0, 0);
+}
+
 bool ClientImpl::Echo() {
   if (!_Active())
     return false;
@@ -287,6 +291,10 @@ void Client::EndSession() {
 
 void Client::StartMaintenance() {
   m_pImpl->StartMaintenance();
+}
+
+void Client::ReloadStyle() {
+  m_pImpl->ReloadStyle();
 }
 
 void Client::EndMaintenance() {

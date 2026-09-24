@@ -191,15 +191,15 @@ int Configurator::UpdateWorkspace(bool report_errors) {
   return 0;
 }
 
-// 轻量生效:样式/行为类改动只写进 custom yaml,让服务端经一次维护握手
-// 重启引擎重读配置即可 —— 秒级,不跑部署的词典编译与配置重摊。
-// 方案列表/AI 配置(影响 schema 编译与 prism)才需要 UpdateWorkspace 全量部署
+// 轻量生效:样式/行为类改动走「样式热重载」管道 —— 服务端只重读 weasel
+// 配置并推给全部会话,毫秒级;不销毁引擎(维护握手路径重启引擎要连带
+// 重载 AI 模型,十几秒)。方案列表/AI 配置影响 schema 编译,仍走
+// UpdateWorkspace 全量部署
 int Configurator::ReloadService() {
   bangke::Client client;
   if (!client.Connect())
     return 1;
-  client.StartMaintenance();
-  client.EndMaintenance();
+  client.ReloadStyle();
   return 0;
 }
 

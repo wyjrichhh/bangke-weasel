@@ -349,6 +349,14 @@ DWORD ServerImpl::OnEndMaintenance(BANGKE_IPC_COMMAND uMsg,
   return 0;
 }
 
+DWORD ServerImpl::OnReloadStyle(BANGKE_IPC_COMMAND uMsg,
+                                DWORD wParam,
+                                DWORD lParam) {
+  if (m_pRequestHandler)
+    m_pRequestHandler->ReloadStyle();
+  return 0;
+}
+
 DWORD ServerImpl::OnCommitComposition(BANGKE_IPC_COMMAND uMsg,
                                       DWORD wParam,
                                       DWORD lParam) {
@@ -436,7 +444,8 @@ void ServerImpl::HandlePipeMessage(PipeMessage pipe_msg, _Resp resp) {
                   OnSelectCandidateOnCurrentPage);
   PIPE_MSG_HANDLE(BANGKE_IPC_HIGHLIGHT_CANDIDATE_ON_CURRENT_PAGE,
                   OnHighlightCandidateOnCurrentPage);
-  PIPE_MSG_HANDLE(BANGKE_IPC_CHANGE_PAGE, OnChangePage);
+  PIPE_MSG_HANDLE(BANGKE_IPC_CHANGE_PAGE, OnChangePage)
+  PIPE_MSG_HANDLE(BANGKE_IPC_RELOAD_STYLE, OnReloadStyle);
   PIPE_MSG_HANDLE(BANGKE_IPC_SET_ASCII, OnSetAscii);
   END_MAP_PIPE_MSG_HANDLE(result);
 

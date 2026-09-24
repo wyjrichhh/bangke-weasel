@@ -62,6 +62,7 @@ class ServerImpl : public CWindowImpl<ServerImpl, CWindow, ServerWinTraits>
                               DWORD wParam,
                               DWORD lParam);
   DWORD OnStartMaintenance(BANGKE_IPC_COMMAND uMsg, DWORD wParam, DWORD lParam);
+  DWORD OnReloadStyle(BANGKE_IPC_COMMAND uMsg, DWORD wParam, DWORD lParam);
   DWORD OnEndMaintenance(BANGKE_IPC_COMMAND uMsg, DWORD wParam, DWORD lParam);
   DWORD OnCommitComposition(BANGKE_IPC_COMMAND uMsg,
                             DWORD wParam,

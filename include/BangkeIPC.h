@@ -32,6 +32,7 @@ enum BANGKE_IPC_COMMAND {
   BANGKE_IPC_SELECT_CANDIDATE_ON_CURRENT_PAGE,
   BANGKE_IPC_HIGHLIGHT_CANDIDATE_ON_CURRENT_PAGE,
   BANGKE_IPC_CHANGE_PAGE,
+  BANGKE_IPC_RELOAD_STYLE,
   BANGKE_IPC_LAST_COMMAND
 };
 
@@ -93,6 +94,8 @@ struct RequestHandler {
   virtual void EndMaintenance() {}
   virtual void SetOption(DWORD session_id, const std::string& opt, bool val) {}
   virtual void UpdateColorTheme(BOOL darkMode) {}
+  // 样式热重载:重读配置并推给全部会话,不销毁引擎
+  virtual void ReloadStyle() {}
   // 服务端窗口就绪后注入 HWND，供 OnNotify 投递 WM_BK_RIME_EVENT
   virtual void SetEventWindow(HWND wnd) {}
   // 在服务端消息循环（串行线程）上消费投递来的 rime 事件
@@ -134,6 +137,7 @@ class Client {
   void EndSession();
   // 進入維護模式
   void StartMaintenance();
+  void ReloadStyle();
   // 退出維護模式
   void EndMaintenance();
   // 测试连接

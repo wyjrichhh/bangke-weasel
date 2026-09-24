@@ -91,6 +91,7 @@ class BangkeRimeHandler : public bangke::RequestHandler {
   void SetClientContext(BangkeSessionId ipc_id,
                         const std::wstring& text) override;
   virtual void UpdateColorTheme(BOOL darkMode);
+  virtual void ReloadStyle();
   void SetEventWindow(HWND wnd) override;
   void OnDeferredEvent(int event, uintptr_t rime_session_id) override;
   // AI 泵的两半，只在服务端消息循环线程上跑（见 kAiPumpTimerId 处注释）
