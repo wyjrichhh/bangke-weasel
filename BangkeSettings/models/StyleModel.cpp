@@ -167,7 +167,7 @@ StyleControlModel::StyleControlModel(QObject* parent)
            QStringLiteral("false"));
   addSlider(kLayout, QStringLiteral(u"圆角半径"),
             QStringLiteral("layout/corner_radius"), 0, 30,
-            QStringLiteral("7"));
+            QStringLiteral("9"));
   addSlider(kLayout, QStringLiteral(u"高亮圆角半径"),
             QStringLiteral("layout/round_corner"), 0, 30,
             QStringLiteral("0"));
@@ -558,7 +558,7 @@ void StyleModel::updatePreview() {
     labelPoint = schemeLabel;
   previewMetrics_ = QVariantMap{
       {QStringLiteral("cornerRadius"),
-       styleControls_->intValue(QStringLiteral("layout/corner_radius"), 7)},
+       styleControls_->intValue(QStringLiteral("layout/corner_radius"), 9)},
       {QStringLiteral("hiliteRadius"),
        styleControls_->intValue(QStringLiteral("layout/round_corner"), 0)},
       {QStringLiteral("marginX"), marginX},

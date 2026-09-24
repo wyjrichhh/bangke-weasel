@@ -144,20 +144,20 @@ Item {
     anchors.fill: parent
     anchors.margins: -2
     anchors.bottomMargin: -3
-    radius: zz((m.cornerRadius !== undefined ? m.cornerRadius : 7) + 2)
+    radius: zz((m.cornerRadius !== undefined ? m.cornerRadius : 9) + 2)
     color: Qt.rgba(0, 0, 0, 0.10)
   }
   Rectangle {
     anchors.fill: parent
     anchors.margins: -1
     anchors.bottomMargin: -2
-    radius: zz((m.cornerRadius !== undefined ? m.cornerRadius : 7) + 1)
+    radius: zz((m.cornerRadius !== undefined ? m.cornerRadius : 9) + 1)
     color: Qt.rgba(0, 0, 0, 0.08)
   }
   Rectangle {
     id: panelFace
     anchors.fill: parent
-    radius: zz(m.cornerRadius !== undefined ? m.cornerRadius : 7)
+    radius: zz(m.cornerRadius !== undefined ? m.cornerRadius : 9)
     color: mini.tint("back_color", "#FFFFFF")
     // 引擎只在 border_width > 0 时画边框(border_color 不透明),
     // 预览同判 —— 不额外加描边
@@ -171,7 +171,7 @@ Item {
   // 另一沿用 round_corner(默认 0=直角)→ 首行高亮「上圆下直」
   readonly property real hilitePadY: m.hilitePaddingY !== undefined ? m.hilitePaddingY : 2
   readonly property real hiliteR: Math.max(m.hiliteRadius !== undefined ? m.hiliteRadius : 0,
-                                           m.cornerRadius !== undefined ? m.cornerRadius : 7)
+                                           m.cornerRadius !== undefined ? m.cornerRadius : 9)
   readonly property color hiliteColor: mini.tint("hilited_candidate_back_color", "#FFB3D7FF")
 
   Rectangle {
