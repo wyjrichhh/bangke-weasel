@@ -55,7 +55,6 @@ QtObject {
 
   readonly property int rowHeight: 34
   readonly property int controlHeight: 28
-  readonly property int titleBarHeight: 44  // 与 WinChrome.kTitleBarHeight 一致
 
   // 西文 Segoe UI,中文回落微软雅黑(决策:不随包分发字体)
   readonly property string fontFamily: "Segoe UI"

@@ -23,8 +23,7 @@ Rectangle {
     anchors.top: parent.top
     anchors.leftMargin: 10
     anchors.rightMargin: 10
-    // 标题栏浮在侧栏上方(44),条目从它下面开始
-    anchors.topMargin: Theme.titleBarHeight + 8
+    anchors.topMargin: 12
     spacing: 4
 
     Repeater {

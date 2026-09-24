@@ -2,14 +2,20 @@ import QtQuick
 import QtQuick.Layouts
 import Bangke.Pages
 
-// 外观页(mac AppearanceSettingsPage):顶部浅/深双面板预览条 + 颜色/字体/
-// 布局/显示/格式五段。配色方案、字号、候选排列是 StyleModel 直属属性,
+// 外观页(mac AppearanceSettingsPage):预览条【固定】不随表单滚动
+// (mac 同构:页头+预览在 Form 之外,方便边调下面的参数边看预览),
+// 颜色/字体/布局/显示/格式五段各自成卡在下方独立滚动。
+// 配色方案、字号、候选排列是 StyleModel 直属属性,
 // 其余行来自 styleControls 的同名段。
-PageScroll {
+ColumnLayout {
 
   MacPreviewStrip {
     Layout.fillWidth: true
   }
+
+  PageScroll {
+    Layout.fillWidth: true
+    Layout.fillHeight: true
 
   Card {
     Layout.fillWidth: true
@@ -99,5 +105,6 @@ PageScroll {
       source: app.style.styleControls
       section: "格式"
     }
+  }
   }
 }
