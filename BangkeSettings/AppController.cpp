@@ -8,15 +8,17 @@
 #include <BangkeUtility.h>
 
 namespace {
-// 页头文案与侧栏条目同一份来源 —— 分开写迟早对不上
+// 页面与 mac 设置窗一致:外观/行为/智能联想照抄,「方案与词典」是 Windows
+// 特有(mac 上在菜单栏),「关于」收版本与文件夹入口。
 const struct {
   const char* title;
   const char* sub;
 } kPages[] = {
-    {"通用设置", "候选数量、Shift 键行为与切换提示"},
-    {"界面样式", "配色、字体、候选窗排列与排版微调"},
-    {"AI 预测", "模型、触发条件与候选插入方式"},
-    {"高级", "方案选单、用户词典与快捷入口"},
+    {"外观", ""},
+    {"行为", "菜单栏与输入行为。"},
+    {"智能联想", "各输入方案的模型联想。"},
+    {"方案与词典", "输入方案选单与用户词典管理。"},
+    {"关于", ""},
 };
 }  // namespace
 
@@ -34,7 +36,7 @@ AppController::AppController(Configurator* configurator, bool openDictPage,
   connect(switcher_, &SwitcherModel::info, this, &AppController::info);
   connect(dict_, &DictModel::info, this, &AppController::info);
 
-  // 四页布局: 0=通用 1=界面样式 2=AI 3=高级(方案+词典)
+  // 五页布局: 0=外观 1=行为 2=智能联想 3=方案与词典 4=关于
   pageIndex_ = openDictPage ? 3 : 0;
   // 首屏载入推到事件循环里:本对象先于 QQmlApplicationEngine 构造,构造期
   // 载入若撞上部署互斥,BeginDictSession 发的提示还没有 QML 接收者,会丢
@@ -60,6 +62,14 @@ QStringList AppController::pageSubs() const {
   return out;
 }
 
+QString AppController::appVersion() const {
+  return QStringLiteral("%1.%2.%3 (%4)")
+      .arg(VERSION_MAJOR)
+      .arg(VERSION_MINOR)
+      .arg(VERSION_PATCH)
+      .arg(VERSION_BUILD);
+}
+
 void AppController::setPageIndex(int index) {
   if (index == pageIndex_)
     return;
@@ -70,18 +80,20 @@ void AppController::setPageIndex(int index) {
 
 void AppController::onPageChanged(int index) {
   dict_->setSessionActive(false);
-  // 离开高级页立即结束部署会话:BeginDictSession 拿住的 BangkeDeployerMutex
-  // 若握到关窗,之后点「保存并重新部署」必撞"另一项部署任务"
+  // 离开方案与词典页立即结束部署会话:BeginDictSession 拿住的
+  // BangkeDeployerMutex 若握到关窗,之后点「保存并应用」必撞"另一项部署任务"
   configurator_->EndDictSession();
-  // 进入即重读配置(含外部/部署后的变更),未保存的改动随之丢弃
+  // 各页首次进入才载入,此后不重读——重读会冲掉跨页的未保存草稿
+  // (mac 同语义:Restore Defaults 只改草稿,保存前切页不丢)。词典会话例外:
+  // 每次进页都要重建,方案表与词典列表可能在部署后变了
   if (index == 3) {
     switcher_->load();
     if (configurator_->BeginDictSession())
       dict_->setSessionActive(true);
   } else if (index == 0) {
-    general_->load();
+    style_->load();
   } else if (index == 1) {
-    style_->forceLoad();
+    general_->load();
   } else if (index == 2) {
     ai_->load();
   }
@@ -94,9 +106,21 @@ void AppController::setSaving(bool value) {
   emit savingChanged();
 }
 
+void AppController::restoreDefaults() {
+  // 先确保三个模型已载入:save 的 loaded_ 守卫会把「没载入的页」判成无改动
+  // 而静默跳过,恢复默认就白做了(通用/外观/智能联想都会被保存连坐)
+  style_->load();
+  general_->load();
+  ai_->load();
+  style_->resetDefaults();
+  general_->resetDefaults();
+  ai_->resetAll();
+  emit toast(QStringLiteral(u"已恢复默认,保存后生效"));
+}
+
 void AppController::saveAndDeploy() {
-  // 部署独占:高级页词典会话握着维护握手,叠加部署会令服务端
-  // 二次 Finalize rime(双杀),先收掉,完事在原页重建
+  // 部署独占:词典会话握着维护握手,叠加部署会令服务端二次 Finalize
+  // rime(双杀),先收掉,完事在原页重建
   dict_->setSessionActive(false);
   configurator_->EndDictSession();
 

@@ -82,6 +82,8 @@ class AiModel : public QObject {
 
   Q_INVOKABLE void load();
   bool save();
+  // 恢复默认:所有接 AI 方案的草稿一起回出厂值(对齐 mac 的 restoreDefaults)
+  Q_INVOKABLE void resetAll();
 
  signals:
   void changed();

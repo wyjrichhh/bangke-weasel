@@ -1,59 +1,62 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Effects
 import Bangke.Pages
 
-// 卡片:surface + 1px 发丝边 + 13 圆角 + 真投影。
-// 投影用 MultiEffect:QGraphicsDropShadowEffect 是 Widgets 的东西,而 QSS 根本没有
-// box-shadow —— 这正是这次重写的理由之一。
-Item {
+// mac 分组表单卡:小灰标题悬在卡片上方(SwiftUI Form .grouped 的 Section
+// 头),卡片本体是纯色圆角面 + 两层极淡的同心叠影(mac 卡片在浅灰底上
+// 若隐若现的浮起感),行间发丝线由行组件自己画。
+// 叠影用纯 Rectangle 而不是 MultiEffect:shader 阴影在软件/RDP 渲染下
+// blur 退化成实心轮廓块。
+ColumnLayout {
   id: card
   property string title: ""
-  property int hPadding: 20
-  property int topPadding: 8
-  property int bottomPadding: 6
+  property int hPadding: 18
   default property alias contentData: body.data
 
-  implicitHeight: body.implicitHeight + card.topPadding + card.bottomPadding
+  spacing: 0
 
-  Rectangle {
-    id: face
-    anchors.fill: parent
-    radius: Theme.cardRadius
-    color: Theme.surface
-    border.width: 1
-    border.color: Theme.hair
-    visible: false
+  Txt {
+    text: card.title
+    visible: card.title.length > 0
+    // 分块标题用 50% 墨色(mac section header 的对比档),26% 在浅底上不可读
+    color: Theme.ink2
+    font.pixelSize: Theme.hintSize
+    font.weight: Font.DemiBold
+    Layout.fillWidth: true
+    Layout.leftMargin: 10
+    Layout.bottomMargin: 5
   }
 
-  MultiEffect {
-    source: face
-    anchors.fill: face
-    shadowEnabled: true
-    shadowColor: Theme.shadow
-    shadowBlur: 0.8
-    shadowVerticalOffset: 6
-  }
+  Item {
+    Layout.fillWidth: true
+    implicitHeight: body.implicitHeight
 
-  ColumnLayout {
-    id: body
-    anchors.fill: parent
-    anchors.leftMargin: card.hPadding
-    anchors.rightMargin: card.hPadding
-    anchors.topMargin: card.topPadding
-    anchors.bottomMargin: card.bottomPadding
-    spacing: 0
+    Rectangle {
+      anchors.fill: parent
+      anchors.margins: -2
+      anchors.bottomMargin: -3
+      radius: Theme.cardRadius + 2
+      color: Qt.rgba(0, 0, 0, Theme.dark ? 0.22 : 0.06)
+    }
+    Rectangle {
+      anchors.fill: parent
+      anchors.margins: -1
+      anchors.bottomMargin: -2
+      radius: Theme.cardRadius + 1
+      color: Qt.rgba(0, 0, 0, Theme.dark ? 0.16 : 0.05)
+    }
+    Rectangle {
+      anchors.fill: parent
+      radius: Theme.cardRadius
+      color: Theme.surface
+    }
 
-    Txt {
-      text: card.title
-      visible: card.title.length > 0
-      color: Theme.ink3
-      font.pixelSize: Theme.hintSize
-      font.weight: Font.DemiBold
-      font.letterSpacing: 0.7
-      Layout.fillWidth: true
-      Layout.topMargin: 12
-      Layout.bottomMargin: 4
+    ColumnLayout {
+      id: body
+      anchors.fill: parent
+      anchors.leftMargin: card.hPadding
+      anchors.rightMargin: card.hPadding
+      spacing: 0
     }
   }
 }

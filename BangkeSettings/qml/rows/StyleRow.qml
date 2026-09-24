@@ -2,8 +2,8 @@ import QtQuick
 import Bangke.Pages
 
 // styleControls 里的一行:按 kind 挑控件,写回只有 model.value 一个出口
-// (StyleControlModel::setData 会按 kind 收下 bool / int / 字符串)。
-// kind 的取值: toggle / spin / edit / combo。
+// (StyleControlModel::setData 会按 kind 收下 bool / double / int / 字符串)。
+// kind 的取值: toggle / slider / dslider / edit / combo。
 Item {
   id: row
 
@@ -11,8 +11,9 @@ Item {
   readonly property string helper: model.helper
   readonly property var rawValue: model.value
   readonly property var optionList: model.options === undefined ? [] : model.options
-  readonly property int minValue: model.min === undefined ? 0 : Number(model.min)
-  readonly property int maxValue: model.max === undefined ? 0 : Number(model.max)
+  readonly property real minValue: model.min === undefined ? 0 : Number(model.min)
+  readonly property real maxValue: model.max === undefined ? 0 : Number(model.max)
+  readonly property real stepValue: model.step === undefined ? 1 : Number(model.step)
 
   property bool showDivider: true
 
@@ -41,7 +42,7 @@ Item {
     anchors.fill: parent
     active: row.visible
     sourceComponent: model.kind === "toggle" ? toggleCell
-                     : model.kind === "spin" ? spinCell
+                     : model.kind === "slider" || model.kind === "dslider" ? sliderCell
                      : model.kind === "edit" ? textCell
                      : model.kind === "combo" ? comboCell
                      : null
@@ -61,16 +62,17 @@ Item {
   }
 
   Component {
-    id: spinCell
-    SpinRow {
+    id: sliderCell
+    SliderRow {
       label: row.label
       helper: row.helper
       showDivider: row.showDivider
       min: row.minValue
       max: row.maxValue
+      step: row.stepValue
       value: row.readNumber()
       onEdited: function (v) {
-        row.write(v)
+        row.write(model.kind === "dslider" ? v : Math.round(v))
       }
     }
   }

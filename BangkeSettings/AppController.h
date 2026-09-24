@@ -20,6 +20,7 @@ class AppController : public QObject {
   Q_PROPERTY(QStringList pageTitles READ pageTitles CONSTANT)
   Q_PROPERTY(QStringList pageSubs READ pageSubs CONSTANT)
   Q_PROPERTY(bool saving READ saving NOTIFY savingChanged)
+  Q_PROPERTY(QString appVersion READ appVersion CONSTANT)
   Q_PROPERTY(GeneralModel* general READ general CONSTANT)
   Q_PROPERTY(StyleModel* style READ style CONSTANT)
   Q_PROPERTY(AiModel* ai READ ai CONSTANT)
@@ -37,6 +38,7 @@ class AppController : public QObject {
   QStringList pageTitles() const;
   QStringList pageSubs() const;
   bool saving() const { return saving_; }
+  QString appVersion() const;
 
   GeneralModel* general() const { return general_; }
   StyleModel* style() const { return style_; }
@@ -45,7 +47,9 @@ class AppController : public QObject {
   DictModel* dict() const { return dict_; }
 
   Q_INVOKABLE void saveAndDeploy();
-  // 高级页的快捷入口
+  // 恢复默认:外观/行为/智能联想的草稿回出厂值,仍需「保存并应用」落盘
+  Q_INVOKABLE void restoreDefaults();
+  // 关于页的文件夹入口
   Q_INVOKABLE void openUserFolder() const;
   Q_INVOKABLE void openLogFolder() const;
 

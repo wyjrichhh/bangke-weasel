@@ -1,12 +1,13 @@
 import QtQuick
 import Bangke.Pages
 
-// 文字默认值只有这一份。中文界面里 Text 必须显式指定字体族 —— Windows 上 Text 的
-// 默认字体是 Segoe UI,中文会掉进后备字体,那就是"廉价感"的来源之一。
+// 文字默认值只有这一份。西文 Segoe UI,中文经字形回退落到微软雅黑
+// (回退链由 main.cpp 的应用字体携带)。
+// 不用 NativeRendering:GDI 文本在非整数缩放/RDP 下发毛,
+// Qt 自绘的文本亚像素更顺滑 —— 「光滑度」的一部分。
 Text {
   font.family: Theme.fontFamily
   font.pixelSize: Theme.bodySize
   color: Theme.ink
-  renderType: Text.NativeRendering
   wrapMode: Text.NoWrap
 }

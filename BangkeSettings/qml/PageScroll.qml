@@ -29,7 +29,7 @@ Item {
     ColumnLayout {
       id: column
       width: scroll.availableWidth
-      spacing: 12
+      spacing: 14
     }
   }
 }

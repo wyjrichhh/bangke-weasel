@@ -6,11 +6,13 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
+#include <QQuickWindow>
 #include <QUrl>
 
 #include "AppController.h"
 #include "Configurator.h"
 #include "SystemTheme.h"
+#include "WinChrome.h"
 // 放在项目头之后:AppController.h 会带进 rime_api.h,先 windows.h 会撞宏重定义(4005)
 #include <windows.h>
 
@@ -118,8 +120,14 @@ int main(int argc, char* argv[]) {
         break;
       case Mode::Dict:
       case Mode::Gui: {
-        // 屏幕上的字号与字体:QML 里没显式指定的文本跟这一份
-        app.setFont(QFont(QStringLiteral("Microsoft YaHei UI"), 10));
+        // 屏幕上的字号与字体:QML 里没显式指定的文本跟这一份。
+        // families 回退链 QML 侧给不了(font 没有 families 组属性),在这配:
+        // 西文 Segoe UI,中文逐字回落微软雅黑
+        QFont appFont;
+        appFont.setFamilies({QStringLiteral("Segoe UI"),
+                             QStringLiteral("Microsoft YaHei UI")});
+        appFont.setPixelSize(13);
+        app.setFont(appFont);
         // 落到 Basic:QML 靠每个实例覆写 background/indicator 拿真投影与焦点环,
         // 换 style 会把这些盖掉
         QQuickStyle::setStyle(QStringLiteral("Basic"));
@@ -139,6 +147,13 @@ int main(int argc, char* argv[]) {
         if (engine.rootObjects().isEmpty())
           engine.load(QUrl(QStringLiteral(
               "qrc:/qt/qml/Bangke/Pages/qml/Main.qml")));
+        if (!engine.rootObjects().isEmpty()) {
+          // frameless 窗口的拖动/缩放/圆角/acrylic 在 Win32 侧,只服务 GUI 主窗
+          static WinChrome winChrome;
+          if (auto* window =
+                  qobject_cast<QQuickWindow*>(engine.rootObjects().first()))
+            winChrome.attach(window, &sysTheme);
+        }
         if (engine.rootObjects().isEmpty())
           ret = 1;
         else

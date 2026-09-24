@@ -3,7 +3,8 @@ import QtQuick.Dialogs
 import QtQuick.Layouts
 import Bangke.Pages
 
-// 高级:方案选单 + 用户词典 + 快捷入口(MainWindow.cpp 里这一页的三块)。
+// 方案与词典页(原「高级」页的两块,mac 没有这一页 —— 方案切换和词典在
+// mac 上由菜单栏承担,Windows 没有菜单栏所以收进设置)。
 // 词典的四个动作走 DictModel 的两段式:choose* 发请求 → QML 开文件对话框 →
 // apply* 把路径交回去;模型自己没有文件对话框(Widgets 已经摘掉了)。
 PageScroll {
@@ -73,7 +74,7 @@ PageScroll {
 
         delegate: Rectangle {
           width: parent.width
-          height: 32
+          height: 30
           radius: 6
           color: index === app.dict.currentIndex ? Theme.accentSoft : "transparent"
 
@@ -129,40 +130,6 @@ PageScroll {
         text: "从文本导入…"
         enabled: app.dict.hasSelection
         onClicked: app.dict.chooseAndImport()
-      }
-    }
-  }
-
-  Card {
-    Layout.fillWidth: true
-    title: "快捷入口"
-
-    RowShell {
-      Layout.fillWidth: true
-      showDivider: false
-      label: "用户文件夹"
-      controlWidth: userFolderBtn.implicitWidth
-
-      Btn {
-        id: userFolderBtn
-        anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
-        text: "打开用户文件夹"
-        onClicked: app.openUserFolder()
-      }
-    }
-
-    RowShell {
-      Layout.fillWidth: true
-      label: "日志文件夹"
-      controlWidth: logFolderBtn.implicitWidth
-
-      Btn {
-        id: logFolderBtn
-        anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
-        text: "打开日志文件夹"
-        onClicked: app.openLogFolder()
       }
     }
   }

@@ -481,6 +481,13 @@ void AiModel::load() {
   showSchema(schemas.contains(active) ? active : schemas.first());
 }
 
+void AiModel::resetAll() {
+  for (const QString& id : schemas_)
+    predict_[id] = AIPredict();
+  if (!currentSchema_.isEmpty())
+    showSchema(currentSchema_);
+}
+
 // 让数字与标点留在同一个拼音段。
 //
 // abc_segmentor 按 speller/alphabet 决定字符落在哪个段,而插件只看得到段内的输入——

@@ -17,18 +17,18 @@ RowShell {
     anchors.right: parent.right
     anchors.verticalCenter: parent.verticalCenter
     implicitWidth: row.fieldWidth
-    implicitHeight: Theme.controlHeight
+    implicitHeight: 26
     topPadding: 0
     bottomPadding: 0
-    leftPadding: 11
-    rightPadding: 11
+    leftPadding: 8
+    rightPadding: 8
     text: row.value
     readOnly: row.readOnly
     color: row.readOnly ? Theme.ink2 : Theme.ink
     font.family: Theme.fontFamily
     font.pixelSize: Theme.bodySize
     selectionColor: Theme.accent
-    selectedTextColor: Theme.onAccent
+    selectedTextColor: Theme.accentText
     selectByMouse: true
     onTextEdited: row.edited(text)
     // 键入会顶掉 text 上的绑定,编辑结束再挂回去 —— 否则外部重载后这里显示旧值

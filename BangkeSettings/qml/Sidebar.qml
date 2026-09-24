@@ -2,12 +2,13 @@ import QtQuick
 import QtQuick.Layouts
 import Bangke.Pages
 
-// 侧栏:184 固定宽,条目 36 高、选中态是 accent-soft 药丸。
-// 条目与页头文案同一个来源(app.pageTitles),分开写迟早对不上。
+// mac 侧栏:200 宽、条目 28 高(padding h8 v5)、选中态 accent 22% 圆角 6。
+// 背板是 NSVisualEffectView(.sidebar) 的固定色近似(Windows 没有窗口局部
+// 毛玻璃通道)。条目与页头文案同一个来源(app.pageTitles),分开写迟早对不上。
 Rectangle {
   id: side
-  implicitWidth: 184
-  color: Theme.surface
+  implicitWidth: 200
+  color: Theme.sidebarBg
 
   Rectangle {
     width: 1
@@ -20,19 +21,20 @@ Rectangle {
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.top: parent.top
-    anchors.leftMargin: 12
-    anchors.rightMargin: 12
-    anchors.topMargin: 16
-    spacing: 3
+    anchors.leftMargin: 10
+    anchors.rightMargin: 10
+    // 标题栏浮在侧栏上方(44),条目从它下面开始
+    anchors.topMargin: Theme.titleBarHeight + 8
+    spacing: 4
 
     Repeater {
       model: app.pageTitles
 
       delegate: Rectangle {
         id: navItem
-        width: side.width - 24
-        height: 36
-        radius: Theme.fieldRadius
+        width: side.width - 20
+        height: 28
+        radius: 6
         readonly property bool on: index === app.pageIndex
         color: navItem.on ? Theme.accentSoft
                           : hover.containsMouse ? Theme.hairSoft : "transparent"
@@ -42,21 +44,21 @@ Rectangle {
         }
 
         RowLayout {
-          x: 12
-          spacing: 10
+          x: 8
+          spacing: 8
           anchors.verticalCenter: parent.verticalCenter
 
           NavIcon {
             which: index
-            color: navItem.on ? Theme.accentInk : Theme.ink2
+            // mac 侧栏:选中项图标与文字都是强调色,非选中为普通文字色
+            color: navItem.on ? Theme.accent : Theme.ink
             holeColor: navItem.color
             Layout.alignment: Qt.AlignVCenter
           }
 
           Txt {
             text: modelData
-            color: navItem.on ? Theme.accentInk : Theme.ink2
-            font.weight: navItem.on ? Font.DemiBold : Font.Normal
+            color: navItem.on ? Theme.accent : Theme.ink
             Layout.alignment: Qt.AlignVCenter
           }
         }

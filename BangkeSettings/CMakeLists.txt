@@ -42,6 +42,7 @@ qt_add_executable(BangkeSettings WIN32
   main.cpp
   AppController.cpp AppController.h
   SystemTheme.cpp SystemTheme.h
+  WinChrome.cpp WinChrome.h
   Configurator.cpp Configurator.h
   UIStyleSettings.cpp UIStyleSettings.h
   models/AiModel.cpp models/AiModel.h
@@ -58,10 +59,14 @@ qt_add_executable(BangkeSettings WIN32
 # 窗口图标和 exe 图标是两回事:rc 里那份只管资源管理器/任务栏的静态图标,标题栏取的是
 # QWindow::icon(为空则 QGuiApplication::windowIcon(),再空就落回 Windows 默认应用图标)。
 # QML 侧没有设置的地方,所以把同一个 .ico 也编进 Qt 资源,由 main.cpp 交给 QGuiApplication。
+# appicon.png(1024px,取自 mac 的 AppIcon)给关于页:ico 里最大的帧只有 48px,
+# 拉到 128 就是马赛克
+set(BANGKE_APPICON "${CMAKE_CURRENT_SOURCE_DIR}/../resource/bangke-appicon.png")
 set_source_files_properties(${BANGKE_ICON} PROPERTIES QT_RESOURCE_ALIAS bangke.ico)
+set_source_files_properties(${BANGKE_APPICON} PROPERTIES QT_RESOURCE_ALIAS bangke-appicon.png)
 qt_add_resources(BangkeSettings "appicon"
   PREFIX "/"
-  FILES ${BANGKE_ICON}
+  FILES ${BANGKE_ICON} ${BANGKE_APPICON}
 )
 
 # QML 编进 qrc(不铺散文件)。用 glob 而不是逐个列:qml/ 下的文件由视图侧随意增删,

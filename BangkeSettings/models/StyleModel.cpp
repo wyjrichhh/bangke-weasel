@@ -2,26 +2,59 @@
 
 #include <QFontDatabase>
 
-namespace {
+#include <algorithm>
 
-// 自定义配色卡管理的颜色键(bangke_custom 补丁)
-const char* kCustomColorKeys[] = {
-    "back_color",
-    "text_color",
-    "candidate_text_color",
-    "label_color",
-    "comment_text_color",
-    "border_color",
-    "hilited_candidate_text_color",
-    "hilited_candidate_back_color",
-    "hilited_label_color",
-};
+#include "Levers.h"
+#pragma warning(disable : 4005)
+#include <rime_api.h>
+#pragma warning(default : 4005)
+
+namespace {
 
 QVariantMap option(const QString& label, const QString& value) {
   QVariantMap m;
   m.insert(QStringLiteral("label"), label);
   m.insert(QStringLiteral("value"), value);
   return m;
+}
+
+// 复刻 mac(BangkeTheme) 的配色 fallback:mac 方案大多不写 label/comment 键,
+// 缺失时 mac 用自己的语义兜底 —— 序号 = (候选文字×2 + 面板背景)/3
+// (blendColor,背景用 back_color;引擎 weasel 用透明的 candidate_back,
+// 混出来恒等于文字色,与 mac 观感不符);注释不混合,直接用
+// secondaryLabel(浅色 50% 黑 / 深色 55% 白)
+unsigned BlendMac(unsigned fg, unsigned bg) {
+  auto mix = [&](unsigned a, unsigned b) -> unsigned {
+    return (a * 2 + b) / 3;
+  };
+  return (mix((fg >> 24) & 0xFF, (bg >> 24) & 0xFF) << 24) |
+         (mix((fg >> 16) & 0xFF, (bg >> 16) & 0xFF) << 16) |
+         (mix((fg >> 8) & 0xFF, (bg >> 8) & 0xFF) << 8) |
+         mix(fg & 0xFF, bg & 0xFF);
+}
+
+void FillSchemeFallbacks(std::map<std::string, unsigned int>& c, bool dark) {
+  auto has = [&](const char* k) { return c.count(k) > 0; };
+  auto put = [&](const char* k, unsigned v) {
+    if (!has(k))
+      c[k] = v;
+  };
+  put("text_color", 0xFF000000);
+  put("back_color", 0xFFFFFFFF);
+  put("candidate_text_color", c["text_color"]);
+  put("hilited_text_color", c["text_color"]);
+  put("hilited_back_color", c["back_color"]);
+  put("hilited_candidate_text_color", c["hilited_text_color"]);
+  put("hilited_candidate_back_color", c["hilited_back_color"]);
+  put("border_color", c["text_color"]);
+  put("label_color", BlendMac(c["candidate_text_color"], c["back_color"]));
+  put("hilited_label_color",
+      BlendMac(c["hilited_candidate_text_color"],
+               has("hilited_back_color") ? c["hilited_back_color"]
+                                         : c["back_color"]));
+  const unsigned secondary = dark ? 0x8CFFFFFFu : 0x7F000000u;
+  put("comment_text_color", secondary);
+  put("hilited_comment_text_color", secondary);
 }
 
 QString valueOf(const QVariantMap& opt) {
@@ -40,7 +73,7 @@ int indexOfOption(const QVariantList& options, const QString& value) {
 StyleControlModel::StyleControlModel(QObject* parent)
     : QAbstractListModel(parent) {
   const auto addToggle = [this](const QString& section, const QString& label,
-                                const QString& key,
+                                const QString& key, const QString& factory,
                                 const QString& helper = QString()) {
     Row r;
     r.section = section;
@@ -49,27 +82,32 @@ StyleControlModel::StyleControlModel(QObject* parent)
     r.kind = QStringLiteral("toggle");
     r.helper = helper;
     r.fallback = QStringLiteral("0");
-    r.value = false;
+    r.factory = factory;
+    r.value = factory == QStringLiteral("1");
     rows_.push_back(r);
   };
-  const auto addSpin = [this](const QString& section, const QString& label,
-                              const QString& key, int lo, int hi,
-                              const QString& helper = QString()) {
+  // 滑杆(kind=slider)与浮点滑杆(kind=dslider);factory 同时是兜底值
+  const auto addSlider = [this](const QString& section, const QString& label,
+                                const QString& key, double lo, double hi,
+                                const QString& factory, double step = 1,
+                                const QString& helper = QString()) {
     Row r;
     r.section = section;
     r.label = label;
     r.key = key;
-    r.kind = QStringLiteral("spin");
+    r.kind = step == (int)step ? QStringLiteral("slider")
+                               : QStringLiteral("dslider");
     r.helper = helper;
     r.lo = lo;
     r.hi = hi;
-    // 原 QSpinBox 构造后停在 0,即兜底值
-    r.fallback = QStringLiteral("0");
-    r.value = 0;
+    r.step = step;
+    r.fallback = factory;
+    r.factory = factory;
+    r.value = factory;
     rows_.push_back(r);
   };
   const auto addEdit = [this](const QString& section, const QString& label,
-                              const QString& key,
+                              const QString& key, const QString& factory,
                               const QString& helper = QString()) {
     Row r;
     r.section = section;
@@ -77,11 +115,14 @@ StyleControlModel::StyleControlModel(QObject* parent)
     r.key = key;
     r.kind = QStringLiteral("edit");
     r.helper = helper;
-    r.value = QString();
+    r.value = factory;
+    r.fallback = factory;
+    r.factory = factory;
     rows_.push_back(r);
   };
   const auto addCombo = [this](const QString& section, const QString& label,
                                const QString& key, const QVariantList& options,
+                               const QString& factory,
                                const QString& helper = QString(),
                                bool keepUnknown = false) {
     Row r;
@@ -92,11 +133,22 @@ StyleControlModel::StyleControlModel(QObject* parent)
     r.helper = helper;
     r.options = options;
     r.keepUnknown = keepUnknown;
-    // 原 QComboBox 构造后停在第 0 项
-    r.fallback = options.isEmpty() ? QString() : valueOf(options.first().toMap());
-    r.value = r.fallback;
+    r.value = factory;
+    r.fallback = factory;
+    r.factory = factory;
     rows_.push_back(r);
   };
+
+  // ---- 行表与 mac AppearanceSettingsPage 一一对应;出厂值与
+  // data/weasel.yaml 的 style: 段一一对应,两处改动要一起做 ----
+
+  const QString kColor = QStringLiteral(u"颜色");
+  // 选项在 load 里按实际方案表刷新;空串 = 跟随浅色
+  addCombo(kColor, QStringLiteral(u"深色配色方案"),
+           QStringLiteral("color_scheme_dark"), QVariantList(), QString(),
+           QStringLiteral(u"系统切到深色时改用它"));
+  addSlider(kColor, QStringLiteral(u"背景不透明度"),
+            QStringLiteral("alpha"), 0, 1, QStringLiteral("1.00"), 0.05);
 
   const QString kFont = QStringLiteral(u"字体");
   // 字体名从机器上装的字体里挑。首项是空值,与配置语义一致(空 = 跟随系统)
@@ -105,95 +157,55 @@ StyleControlModel::StyleControlModel(QObject* parent)
   for (const QString& family : QFontDatabase::families())
     fontOptions.append(option(family, family));
   addCombo(kFont, QStringLiteral(u"字体"), QStringLiteral("font_face"),
-           fontOptions, QString(), /*keepUnknown=*/true);
-  addSpin(kFont, QStringLiteral(u"序号字号"), QStringLiteral("label_font_point"),
-          0, 48, QStringLiteral(u"0 = 不显示序号"));
-  addSpin(kFont, QStringLiteral(u"注释字号"),
-          QStringLiteral("comment_font_point"), 0, 48,
-          QStringLiteral(u"0 = 不显示注释"));
-  addSpin(kFont, QStringLiteral(u"候选缩写长度"),
-          QStringLiteral("candidate_abbreviate_length"), 0, 20,
-          QStringLiteral(u"0 = 不缩写"));
+           fontOptions, QStringLiteral("Segoe UI, Microsoft YaHei"), QString(),
+           /*keepUnknown=*/true);
 
-  // 选项在 forceLoad 里按实际方案表刷新
-  addCombo(QStringLiteral(u"深色模式"), QStringLiteral(u"深色配色方案"),
-           QStringLiteral("color_scheme_dark"), QVariantList(),
-           QStringLiteral(u"系统切到深色时改用它"));
+  const QString kLayout = QStringLiteral(u"布局");
+  addCombo(kLayout, QStringLiteral(u"文字方向"), QStringLiteral("vertical_text"),
+           {option(QStringLiteral(u"横排"), QStringLiteral("false")),
+            option(QStringLiteral(u"竖排"), QStringLiteral("true"))},
+           QStringLiteral("false"));
+  addSlider(kLayout, QStringLiteral(u"圆角半径"),
+            QStringLiteral("layout/corner_radius"), 0, 30,
+            QStringLiteral("7"));
+  addSlider(kLayout, QStringLiteral(u"高亮圆角半径"),
+            QStringLiteral("layout/round_corner"), 0, 30,
+            QStringLiteral("0"));
+  addSlider(kLayout, QStringLiteral(u"行距"),
+            QStringLiteral("layout/candidate_spacing"), 0, 30,
+            QStringLiteral("5"));
+  addSlider(kLayout, QStringLiteral(u"预编辑间距"),
+            QStringLiteral("layout/spacing"), 0, 30, QStringLiteral("8"));
+  addSlider(kLayout, QStringLiteral(u"阴影大小"),
+            QStringLiteral("layout/shadow_radius"), 0, 30,
+            QStringLiteral("2"));
+  addSlider(kLayout, QStringLiteral(u"边框宽度"),
+            QStringLiteral("layout/border_width"), 0, 20, QStringLiteral("0"));
 
   const QString kDisplay = QStringLiteral(u"显示");
-  addToggle(kDisplay, QStringLiteral(u"在输入框中显示编码"),
-            QStringLiteral("inline_preedit"));
+  addToggle(kDisplay, QStringLiteral(u"在输入框内显示拼音"),
+            QStringLiteral("inline_preedit"), QStringLiteral("1"));
+  // 以下为 Windows 引擎支持、mac 设置页没有对应项的补充行
+  // (mac 的 inline_candidate/mutual_exclusive/memorize_size/show_paging
+  //  引擎不认,不设)。出厂值 = 引擎的 fallback 默认
+  addToggle(kDisplay, QStringLiteral(u"候选窗跟随光标"),
+            QStringLiteral("enhanced_position"), QStringLiteral("1"));
+  addToggle(kDisplay, QStringLiteral(u"英文提示跟随光标"),
+            QStringLiteral("ascii_tip_follow_cursor"), QStringLiteral("0"));
+  addToggle(kDisplay, QStringLiteral(u"滚轮翻页"),
+            QStringLiteral("paging_on_scroll"), QStringLiteral("0"));
+  addToggle(kDisplay, QStringLiteral(u"点击候选窗捕获"),
+            QStringLiteral("click_to_capture"), QStringLiteral("0"));
   addCombo(kDisplay, QStringLiteral(u"编码显示方式"),
            QStringLiteral("preedit_type"),
            {option(QStringLiteral(u"只显示已选部分"), QStringLiteral("composition")),
             option(QStringLiteral(u"预览首个候选"), QStringLiteral("preview")),
-            option(QStringLiteral(u"预览整句"), QStringLiteral("preview_all"))});
-  addToggle(kDisplay, QStringLiteral(u"英文提示跟随光标"),
-            QStringLiteral("ascii_tip_follow_cursor"));
-  addToggle(kDisplay, QStringLiteral(u"候选窗跟随光标"),
-            QStringLiteral("enhanced_position"));
-  addToggle(kDisplay, QStringLiteral(u"托盘图标"),
-            QStringLiteral("display_tray_icon"));
-  addToggle(kDisplay, QStringLiteral(u"滚轮翻页"),
-            QStringLiteral("paging_on_scroll"));
-  addToggle(kDisplay, QStringLiteral(u"点击候选窗捕获"),
-            QStringLiteral("click_to_capture"));
-
-  const QString kMouse = QStringLiteral(u"鼠标与渲染");
-  addCombo(kMouse, QStringLiteral(u"悬停效果"), QStringLiteral("hover_type"),
-           {option(QStringLiteral(u"无"), QStringLiteral("none")),
-            option(QStringLiteral(u"半高亮"), QStringLiteral("semi_hilite")),
-            option(QStringLiteral(u"高亮"), QStringLiteral("hilite"))});
-  addCombo(kMouse, QStringLiteral(u"字体抗锯齿"),
-           QStringLiteral("antialias_mode"),
-           {option(QStringLiteral(u"默认"), QStringLiteral("default")),
-            option(QStringLiteral(u"灰度"), QStringLiteral("grayscale")),
-            option(QStringLiteral(u"ClearType"), QStringLiteral("cleartype")),
-            option(QStringLiteral(u"强制灰度"), QStringLiteral("force_dword")),
-            option(QStringLiteral(u"不做抗锯齿"), QStringLiteral("aliased"))});
-
-  const QString kVertical = QStringLiteral(u"竖排文字");
-  addToggle(kVertical, QStringLiteral(u"竖排显示候选"),
-            QStringLiteral("vertical_text"));
-  addToggle(kVertical, QStringLiteral(u"从左到右"),
-            QStringLiteral("vertical_text_left_to_right"));
-  addToggle(kVertical, QStringLiteral(u"自动换行"),
-            QStringLiteral("vertical_text_with_wrap"));
-  addToggle(kVertical, QStringLiteral(u"上下自动反向"),
-            QStringLiteral("vertical_auto_reverse"));
+            option(QStringLiteral(u"预览整句"), QStringLiteral("preview_all"))},
+           QStringLiteral("composition"));
 
   const QString kFormat = QStringLiteral(u"格式");
-  addEdit(kFormat, QStringLiteral(u"序号格式"), QStringLiteral("label_format"),
-          QStringLiteral(u"%s 即序号"));
-  addEdit(kFormat, QStringLiteral(u"高亮标记"), QStringLiteral("mark_text"));
-
-  const QString kTuning = QStringLiteral(u"布局微调");
-  const struct {
-    const char* key;
-    const char* label;
-    int lo, hi;
-  } kTuningDefs[] = {
-      {"corner_radius", "面板圆角", 0, 24},
-      {"round_corner", "高亮圆角", 0, 24},
-      {"border_width", "边框宽度", 0, 8},
-      {"margin_x", "内边距", 0, 24},
-      {"candidate_spacing", "候选间距", 0, 24},
-      {"hilite_padding", "高亮内边距", 0, 24},
-      {"shadow_radius", "阴影范围", 0, 32},
-      {"shadow_offset_y", "阴影纵向偏移", -16, 16},
-      {"shadow_offset_x", "阴影横向偏移", -16, 16},
-      {"margin_y", "上下内边距", 0, 24},
-      {"spacing", "行间距", 0, 32},
-      {"hilite_spacing", "高亮与文字间距", 0, 24},
-      {"hilite_padding_x", "高亮横向内边距", 0, 24},
-      {"hilite_padding_y", "高亮纵向内边距", 0, 24},
-      {"linespacing", "候选行高", 0, 32},
-      {"min_width", "最小宽度", 0, 600},
-      {"max_width", "最大宽度", 0, 600},
-  };
-  for (const auto& d : kTuningDefs)
-    addSpin(kTuning, QString::fromUtf8(d.label),
-            QStringLiteral("layout/") + QLatin1String(d.key), d.lo, d.hi);
+  addEdit(kFormat, QStringLiteral(u"候选格式"), QStringLiteral("label_format"),
+          QStringLiteral("%s."), QStringLiteral(u"%s 即序号"));
 }
 
 int StyleControlModel::rowCount(const QModelIndex& parent) const {
@@ -221,6 +233,8 @@ QVariant StyleControlModel::data(const QModelIndex& index, int role) const {
       return r.lo;
     case MaxRole:
       return r.hi;
+    case StepRole:
+      return r.step;
     case OptionsRole:
       return r.options;
     case InitRole:
@@ -238,7 +252,9 @@ bool StyleControlModel::setData(const QModelIndex& index, const QVariant& value,
   Row& r = rows_[index.row()];
   if (r.kind == QStringLiteral("toggle"))
     r.value = value.toBool();
-  else if (r.kind == QStringLiteral("spin"))
+  else if (r.kind == QStringLiteral("dslider"))
+    r.value = value.toDouble();
+  else if (r.kind == QStringLiteral("slider"))
     r.value = value.toInt();
   else
     r.value = value.toString();
@@ -260,14 +276,17 @@ QHash<int, QByteArray> StyleControlModel::roleNames() const {
       {SectionRole, "section"}, {LabelRole, "label"},
       {HelperRole, "helper"},   {ValueRole, "value"},
       {MinRole, "min"},         {MaxRole, "max"},
-      {OptionsRole, "options"}, {InitRole, "init"},
+      {StepRole, "step"},       {OptionsRole, "options"},
+      {InitRole, "init"},
   };
 }
 
 QString StyleControlModel::asText(const Row& row) {
   if (row.kind == QStringLiteral("toggle"))
     return row.value.toBool() ? QStringLiteral("1") : QStringLiteral("0");
-  if (row.kind == QStringLiteral("spin"))
+  if (row.kind == QStringLiteral("dslider"))
+    return QString::number(row.value.toDouble(), 'f', 2);
+  if (row.kind == QStringLiteral("slider"))
     return QString::number(row.value.toInt());
   return row.value.toString();
 }
@@ -278,7 +297,9 @@ void StyleControlModel::load(UIStyleSettings& settings) {
     const std::string fallback = r.fallback.toStdString();
     if (r.kind == QStringLiteral("toggle")) {
       r.value = settings.GetStyleBool(key, r.fallback == QStringLiteral("1"));
-    } else if (r.kind == QStringLiteral("spin")) {
+    } else if (r.kind == QStringLiteral("dslider")) {
+      r.value = settings.GetStyleDouble(key, r.fallback.toDouble());
+    } else if (r.kind == QStringLiteral("slider")) {
       r.value = settings.GetStyleInt(key, r.fallback.toInt());
     } else if (r.kind == QStringLiteral("edit")) {
       r.value = QString::fromStdString(settings.GetStyleString(key, fallback));
@@ -311,7 +332,9 @@ bool StyleControlModel::save(UIStyleSettings& settings) {
     const std::string key = r.key.toStdString();
     if (r.kind == QStringLiteral("toggle"))
       settings.SetStyleBool(key, r.value.toBool());
-    else if (r.kind == QStringLiteral("spin"))
+    else if (r.kind == QStringLiteral("dslider"))
+      settings.SetStyleDouble(key, r.value.toDouble());
+    else if (r.kind == QStringLiteral("slider"))
       settings.SetStyleInt(key, r.value.toInt());
     else
       settings.SetStyleString(key, now.toStdString());
@@ -320,10 +343,41 @@ bool StyleControlModel::save(UIStyleSettings& settings) {
   return changed;
 }
 
+void StyleControlModel::resetDefaults() {
+  for (size_t i = 0; i < rows_.size(); ++i) {
+    Row& r = rows_[i];
+    if (r.kind == QStringLiteral("toggle"))
+      r.value = r.factory == QStringLiteral("1");
+    else if (r.kind == QStringLiteral("dslider"))
+      r.value = r.factory.toDouble();
+    else if (r.kind == QStringLiteral("slider"))
+      r.value = r.factory.toInt();
+    else
+      r.value = r.factory;
+  }
+  if (!rows_.empty())
+    emit dataChanged(index(0), index((int)rows_.size() - 1));
+}
+
 int StyleControlModel::intValue(const QString& key, int fallback) const {
   for (const auto& r : rows_)
     if (r.key == key)
       return r.value.toInt();
+  return fallback;
+}
+
+double StyleControlModel::doubleValue(const QString& key,
+                                      double fallback) const {
+  for (const auto& r : rows_)
+    if (r.key == key)
+      return r.value.toDouble();
+  return fallback;
+}
+
+bool StyleControlModel::boolValue(const QString& key, bool fallback) const {
+  for (const auto& r : rows_)
+    if (r.key == key)
+      return r.value.toBool();
   return fallback;
 }
 
@@ -350,40 +404,14 @@ void StyleControlModel::setComboOptions(const QString& key,
 
 StyleModel::StyleModel(QObject* parent) : QObject(parent) {
   styleControls_ = new StyleControlModel(this);
+  // 任何行变动都可能影响预览(圆角/间距/透明度/深色方案/内联拼音),统一重算
   connect(styleControls_, &StyleControlModel::valueChanged, this,
-          [this](const QString& key) {
-            // 预览只吃这两处圆角与字体
-            if (key == QStringLiteral("layout/corner_radius") ||
-                key == QStringLiteral("layout/round_corner") ||
-                key == QStringLiteral("font_face"))
-              updatePreview();
-          });
+          &StyleModel::updatePreview);
 }
 
 QVariantList StyleModel::layoutOptions() const {
-  return {option(QStringLiteral(u"竖排"), QStringLiteral("vertical")),
-          option(QStringLiteral(u"横排"), QStringLiteral("horizontal"))};
-}
-
-QVariantMap StyleModel::customColors() const {
-  QVariantMap out;
-  for (const auto& kv : custom_)
-    out.insert(QString::fromStdString(kv.first), (uint)kv.second);
-  return out;
-}
-
-QStringList StyleModel::customColorKeys() const {
-  QStringList out;
-  for (const char* k : kCustomColorKeys)
-    out << QString::fromLatin1(k);
-  return out;
-}
-
-int StyleModel::customOpacity() const {
-  const auto it = custom_.find("back_color");
-  if (it == custom_.end())
-    return 0;
-  return (int)(it->second >> 24) * 100 / 255;
+  return {option(QStringLiteral(u"多行"), QStringLiteral("vertical")),
+          option(QStringLiteral(u"单行"), QStringLiteral("horizontal"))};
 }
 
 int StyleModel::indexOfScheme(const QString& id) const {
@@ -417,52 +445,25 @@ void StyleModel::setLayout(const QString& value) {
   updatePreview();
 }
 
-void StyleModel::onCustomEdited() {
-  customDirty_ = true;
-  // 编辑即选中「自定义」;首次编辑时列表尚无该条目,须先补上,
-  // 否则预览一直画旧方案(滑动不透明度预览不跟随即此因)
-  if (indexOfScheme(QStringLiteral("bangke_custom")) < 0) {
-    schemes_.append(
-        option(QStringLiteral(u"自定义"), QStringLiteral("bangke_custom")));
-    emit schemesChanged();
-  }
-  colorScheme_ = QStringLiteral("bangke_custom");
-  emit changed();
-  emit customColorsChanged();
-  updatePreview();
-}
-
-void StyleModel::setCustomColor(const QString& key, uint argb) {
-  const std::string k = key.toStdString();
-  if (custom_[k] == argb)
-    return;
-  custom_[k] = argb;
-  onCustomEdited();
-}
-
-void StyleModel::setCustomOpacity(int percent) {
-  // 只改 alpha,RGB 保留
-  const unsigned cur = custom_["back_color"];
-  custom_["back_color"] =
-      ((unsigned)percent * 255u / 100u << 24) | (cur & 0x00FFFFFFu);
-  onCustomEdited();
-}
-
-void StyleModel::resetCustomColors() {
-  custom_ = initCustom_;
-  customDirty_ = false;
-  emit customColorsChanged();
-  updatePreview();
-}
-
 void StyleModel::load() {
   if (loaded_)
     return;
-  forceLoad();
-}
-
-void StyleModel::forceLoad() {
   settings_.Load();
+  // 每页候选数决定预览条数(default.custom.yaml,与 GeneralModel 同源)
+  pageSize_ = 5;
+  if (RimeLeversApi* api = leversApi()) {
+    RimeCustomSettings* def =
+        api->custom_settings_init("default", "Bangke::StyleModel");
+    if (api->load_settings(def)) {
+      RimeConfig config = {0};
+      if (api->settings_get_config(def, &config)) {
+        int ps = 5;
+        if (rime_get_api()->config_get_int(&config, "menu/page_size", &ps) &&
+            ps > 0 && ps <= 9)
+          pageSize_ = ps;
+      }
+    }
+  }
 
   std::vector<ColorSchemeInfo> schemes;
   settings_.GetPresetColorSchemes(&schemes);
@@ -472,8 +473,8 @@ void StyleModel::forceLoad() {
   for (auto& s : schemes)
     schemes_.append(option(QString::fromStdString(s.name),
                            QString::fromStdString(s.color_scheme_id)));
-  const bool hasCustom = settings_.HasCustomScheme();
-  if (hasCustom)
+  // 存量 bangke_custom 仍可选用(引擎与迁移都认),只是不再提供编辑器
+  if (settings_.HasCustomScheme())
     schemes_.append(
         option(QStringLiteral(u"自定义"), QStringLiteral("bangke_custom")));
   emit schemesChanged();
@@ -493,7 +494,7 @@ void StyleModel::forceLoad() {
                             : (schemes_.isEmpty() ? QString()
                                                   : valueOf(schemes_[0].toMap()));
 
-  activeFontSize_ = settings_.GetFontSize(14);
+  activeFontSize_ = settings_.GetFontSize(16);
   fontSize_ = activeFontSize_;
   activeHorizontal_ = settings_.GetHorizontal(false);
   layout_ = activeHorizontal_ ? QStringLiteral("horizontal")
@@ -501,53 +502,105 @@ void StyleModel::forceLoad() {
 
   styleControls_->load(settings_);
 
-  // 自定义配色初值:已有 bangke_custom 用之,否则从当前方案颜色起步
-  const std::string baseScheme =
-      hasCustom ? std::string("bangke_light") : activeScheme_.toStdString();
-  auto base = settings_.GetSchemeColors(baseScheme);
-  if (hasCustom) {
-    for (const char* k : kCustomColorKeys)
-      custom_[k] = settings_.GetCustomColor(k, base.count(k) ? base[k] : 0);
-  } else {
-    auto from = settings_.GetSchemeColors(activeScheme_.toStdString());
-    for (const char* k : kCustomColorKeys)
-      custom_[k] = from.count(k) ? from[k] : base[k];
-  }
-  initCustom_ = custom_;
-  customDirty_ = false;
-  emit customColorsChanged();
-
-  updatePreview();
+  // 先置 loaded_ 再刷新预览:updatePreview 有「未载入即返回」守卫,
+  // 顺序反了会让首次预览拿到空色表(QML 侧全走 fallback 色)
   loaded_ = true;
+  updatePreview();
   emit changed();
 }
 
 void StyleModel::updatePreview() {
-  const QString id = colorScheme_;
-  std::map<std::string, unsigned int> colors;
-  if (id == QStringLiteral("bangke_custom")) {
-    // 基线共享浅色,叠加用户补丁(编辑中的 custom_ 即最新意图)
-    colors = settings_.GetSchemeColors("bangke_light");
-    for (const char* k : kCustomColorKeys) {
-      const auto it = custom_.find(k);
-      if (it != custom_.end())
-        colors[k] = it->second;
-    }
-  } else if (!id.isEmpty()) {
-    colors = settings_.GetSchemeColors(id.toStdString());
+  if (!loaded_)
+    return;
+  // 浅色块 = 当前方案;深色块 = 深色配色方案,空 = 跟随浅色。
+  // native 按外观各有一套,其余方案两块同色(方案本身就是单一色板)
+  const QString lightId = colorScheme_;
+  QString darkId = styleControls_->stringValue(
+      QStringLiteral("color_scheme_dark"));
+  if (darkId.isEmpty())
+    darkId = lightId;
+  previewLight_.clear();
+  auto light = settings_.GetSchemeColors(lightId.toStdString(), false);
+  FillSchemeFallbacks(light, /*dark=*/false);
+  for (const auto& kv : light)
+    previewLight_.insert(QString::fromStdString(kv.first), (uint)kv.second);
+  previewDark_.clear();
+  auto dark = settings_.GetSchemeColors(darkId.toStdString(), true);
+  FillSchemeFallbacks(dark, /*dark=*/true);
+  for (const auto& kv : dark)
+    previewDark_.insert(QString::fromStdString(kv.first), (uint)kv.second);
+
+  const bool horizontal = layout_ == QStringLiteral("horizontal");
+  // margin 经引擎 fixup = max(|margin|, hilite_padding),预览按同式
+  const int marginX = std::max(
+      styleControls_->intValue(QStringLiteral("layout/margin_x"), 0),
+      styleControls_->intValue(QStringLiteral("layout/hilite_padding_x"), 0));
+  const int marginY = std::max(
+      styleControls_->intValue(QStringLiteral("layout/margin_y"), 0),
+      styleControls_->intValue(QStringLiteral("layout/hilite_padding_y"), 0));
+  // 候选窗字体:取 font_face 第一族;权重后缀与 DirectWriteResources 同解,
+  // QML 侧把名字映到 Font.weight
+  const QString faceRaw =
+      styleControls_->stringValue(QStringLiteral("font_face"));
+  QString family = faceRaw.section(QLatin1Char(','), 0, 0).trimmed();
+  QString weight;
+  const int colon = family.indexOf(QLatin1Char(':'));
+  if (colon >= 0) {
+    weight = family.mid(colon + 1).toLower();
+    family = family.left(colon);
   }
-  previewColors_.clear();
-  for (const auto& kv : colors)
-    previewColors_.insert(QString::fromStdString(kv.first), (uint)kv.second);
-  previewHorizontal_ = (layout_ == QStringLiteral("horizontal"));
-  previewPanelRadius_ =
-      styleControls_->intValue(QStringLiteral("layout/corner_radius"), 10);
-  previewHiliteRadius_ =
-      styleControls_->intValue(QStringLiteral("layout/round_corner"), 6);
-  // 字体也跟着配置走(空 = 跟随系统),字号用「外观」里的候选字号
-  previewFontFace_ = styleControls_->stringValue(QStringLiteral("font_face"));
-  previewFontPoint_ = fontSize_;
+  // 序号字号:方案自带(简约白/冷漠/浮尘/沙漠夜)优先,否则全局值;
+  // 注释字号不再有 UI 行,读合并值
+  int labelPoint = settings_.GetStyleInt("label_font_point", 16);
+  const int schemeLabel = settings_.GetSchemeLabelFontPoint(
+      lightId.toStdString());
+  if (schemeLabel > 0)
+    labelPoint = schemeLabel;
+  previewMetrics_ = QVariantMap{
+      {QStringLiteral("cornerRadius"),
+       styleControls_->intValue(QStringLiteral("layout/corner_radius"), 7)},
+      {QStringLiteral("hiliteRadius"),
+       styleControls_->intValue(QStringLiteral("layout/round_corner"), 0)},
+      {QStringLiteral("marginX"), marginX},
+      {QStringLiteral("marginY"), marginY},
+      // 高亮纵向外扩与边框:引擎只有 border_width>0 才画边框,
+      // 预览与引擎同判,不额外加描边
+      {QStringLiteral("hilitePaddingY"),
+       settings_.GetStyleInt("layout/hilite_padding_y", 2)},
+      {QStringLiteral("borderWidth"),
+       settings_.GetStyleInt("layout/border_width", 0)},
+      {QStringLiteral("pageSize"), pageSize_},
+      {QStringLiteral("candidateSpacing"),
+       styleControls_->intValue(QStringLiteral("layout/candidate_spacing"), 5)},
+      {QStringLiteral("spacing"),
+       styleControls_->intValue(QStringLiteral("layout/spacing"), 8)},
+      {QStringLiteral("hiliteSpacing"),
+       settings_.GetStyleInt("layout/hilite_spacing", 5)},
+      {QStringLiteral("fontPoint"), fontSize_},
+      {QStringLiteral("labelPoint"), labelPoint},
+      {QStringLiteral("commentPoint"),
+       settings_.GetStyleInt("comment_font_point", 16)},
+      {QStringLiteral("fontFamily"), family},
+      {QStringLiteral("fontWeight"), weight},
+      {QStringLiteral("horizontal"), horizontal},
+      {QStringLiteral("verticalText"),
+       styleControls_->stringValue(QStringLiteral("vertical_text")) ==
+           QStringLiteral("true")},
+      {QStringLiteral("inlinePreedit"),
+       styleControls_->boolValue(QStringLiteral("inline_preedit"), true)},
+      {QStringLiteral("alpha"),
+       styleControls_->doubleValue(QStringLiteral("alpha"), 1.0)},
+  };
   emit previewChanged();
+}
+
+void StyleModel::resetDefaults() {
+  colorScheme_ = QStringLiteral("native");
+  fontSize_ = 16;
+  layout_ = QStringLiteral("vertical");
+  styleControls_->resetDefaults();
+  emit changed();
+  updatePreview();
 }
 
 bool StyleModel::save() {
@@ -573,15 +626,13 @@ bool StyleModel::save() {
   }
   if (styleControls_->save(settings_))
     changed = true;
-  // 自定义配色:内容有变化才写。方案归属以下拉选择为准(选「自定义」时
-  // scheme 已是 bangke_custom);曾在此会话编辑过自定义不构成切回的理由
-  // ——否则会把用户随后显式选择的内置方案覆盖掉
-  if (customDirty_ && custom_ != initCustom_) {
-    for (const char* k : kCustomColorKeys)
-      settings_.SetCustomColor(k, custom_[k]);
-    changed = true;
-  }
   if (!changed)
     return false;
-  return settings_.Save();
+  if (!settings_.Save())
+    return false;
+  // 保存成功后同步快照,否则再次保存会把同一改动再写一遍
+  activeScheme_ = scheme;
+  activeFontSize_ = fontSize_;
+  activeHorizontal_ = horizontal;
+  return true;
 }
