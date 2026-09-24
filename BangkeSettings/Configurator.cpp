@@ -191,6 +191,18 @@ int Configurator::UpdateWorkspace(bool report_errors) {
   return 0;
 }
 
+// 轻量生效:样式/行为类改动只写进 custom yaml,让服务端经一次维护握手
+// 重启引擎重读配置即可 —— 秒级,不跑部署的词典编译与配置重摊。
+// 方案列表/AI 配置(影响 schema 编译与 prism)才需要 UpdateWorkspace 全量部署
+int Configurator::ReloadService() {
+  bangke::Client client;
+  if (!client.Connect())
+    return 1;
+  client.StartMaintenance();
+  client.EndMaintenance();
+  return 0;
+}
+
 int Configurator::EnsureAiDefaults() {
   return BangkeEnsureUserSeeds();
 }

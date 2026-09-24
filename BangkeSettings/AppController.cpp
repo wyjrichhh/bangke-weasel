@@ -1,6 +1,8 @@
 #include "AppController.h"
 
 #include <QCoreApplication>
+
+#include <thread>
 #include <QDesktopServices>
 #include <QUrl>
 
@@ -124,37 +126,46 @@ void AppController::saveAndDeploy() {
   dict_->setSessionActive(false);
   configurator_->EndDictSession();
 
-  bool modified = switcher_->save();
-  modified = style_->save() || modified;
-  modified = general_->save() || modified;
-  modified = ai_->save() || modified;
+  const bool switcherChanged = switcher_->save();
+  const bool styleChanged = style_->save();
+  const bool generalChanged = general_->save();
+  const bool aiChanged = ai_->save();
 
-  if (!modified) {
+  if (!switcherChanged && !styleChanged && !generalChanged && !aiChanged) {
     emit toast(QStringLiteral(u"没有需要保存的修改"));
     return;
   }
 
-  // 部署期间禁用保存,防连点撞部署互斥
+  // 分级生效(对齐 mac 的 needsFullDeployment):方案列表与 AI 配置写进
+  // schema 级的 custom yaml(方案编译、ai_only 的 prism 扩展),需要全量
+  // 部署;样式/行为类改动服务端重读配置即可,不做词典编译与配置重摊。
+  // 两类都在后台线程执行 —— 部署再久窗口也不卡
+  const bool fullDeploy = switcherChanged || aiChanged;
   setSaving(true);
-  QCoreApplication::processEvents();
 
-  // UpdateWorkspace(true) 内部对'已有部署在跑'等场景已发提示,
-  // 这里只对 >1 的意外失败码追加告警(1=mutex 冲突,信息已展示)
-  const int ret = configurator_->UpdateWorkspace(true);
-  setSaving(false);
-  if (ret > 1) {
-    emit info(QStringLiteral(u"蚌壳拼音"),
-              QStringLiteral(u"保存失败(错误码 %1)。\n"
-                             u"配置可能写入有误,请检查用户文件夹中的 yaml 文件。")
-                  .arg(ret));
-    return;
-  }
-  if (ret == 0) {
-    emit toast(QStringLiteral(u"已保存,输入法即刻生效"));
-  }
-
-  if (pageIndex_ == 3 && configurator_->BeginDictSession())
-    dict_->setSessionActive(true);
+  std::thread worker([this, fullDeploy] {
+    // 全量:含词典/schema;轻量:维护握手重读(样式/行为类改动)
+    const int ret = fullDeploy ? configurator_->UpdateWorkspace(true)
+                               : configurator_->ReloadService();
+    QMetaObject::invokeMethod(
+        this,
+        [this, ret] {
+          setSaving(false);
+          if (ret > 1) {
+            emit info(
+                QStringLiteral(u"蚌壳拼音"),
+                QStringLiteral(u"保存失败(错误码 %1)。\n"
+                               u"配置可能写入有误,请检查用户文件夹中的 yaml 文件。")
+                    .arg(ret));
+          } else if (ret == 0) {
+            emit toast(QStringLiteral(u"已保存,输入法即刻生效"));
+          }
+          if (pageIndex_ == 3 && configurator_->BeginDictSession())
+            dict_->setSessionActive(true);
+        },
+        Qt::QueuedConnection);
+  });
+  worker.detach();
 }
 
 void AppController::openUserFolder() const {

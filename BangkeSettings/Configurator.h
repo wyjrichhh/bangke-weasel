@@ -14,6 +14,10 @@ class Configurator : public QObject {
 
   void Initialize();
   int UpdateWorkspace(bool report_errors = false);
+  // 轻量生效:仅维护握手让服务端重读配置(秒级);样式/行为类改动够用,
+  // 词典与 schema 不重编。影响 schema 编译的改动(方案列表/AI 配置)仍需
+  // UpdateWorkspace
+  int ReloadService();
   int SyncUserData();
   // 全新安装的用户目录 AI 初始化(/install):写接线 custom yaml、铺模型。
   // 幂等:只补缺,不覆盖用户已有文件
