@@ -20,9 +20,17 @@ class UIStyleSettings {
   bool Save();
 
   bool GetPresetColorSchemes(std::vector<ColorSchemeInfo>* result);
-  // 指定方案的原始配色键值,统一归一为 0xAARRGGBB
+  // 指定方案的原始配色键值,统一归一为 0xAARRGGBB。
+  // native(系统配色)在 yaml 里不带色值,返回 BangkeNativeTheme 烘焙色;
+  // 带 dark 参数时按外观取,其余方案忽略 dark(深浅靠换方案 id 表达)
   std::map<std::string, unsigned int> GetSchemeColors(
       const std::string& color_scheme_id);
+  std::map<std::string, unsigned int> GetSchemeColors(
+      const std::string& color_scheme_id,
+      bool dark);
+  // 方案内 label_font_point(mac 若干方案自带,如简约白 12/浮尘 10);
+  // 0 = 方案未带。预览用
+  int GetSchemeLabelFontPoint(const std::string& color_scheme_id);
   std::string GetActiveColorScheme();
   bool SelectColorScheme(const std::string& color_scheme_id);
 
@@ -43,6 +51,8 @@ class UIStyleSettings {
   void SetStyleBool(const std::string& key, bool value);
   int GetStyleInt(const std::string& key, int fallback);
   void SetStyleInt(const std::string& key, int value);
+  double GetStyleDouble(const std::string& key, double fallback);
+  void SetStyleDouble(const std::string& key, double value);
   std::string GetStyleString(const std::string& key,
                              const std::string& fallback);
   void SetStyleString(const std::string& key, const std::string& value);

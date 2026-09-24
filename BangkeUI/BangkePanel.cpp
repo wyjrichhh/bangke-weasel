@@ -541,6 +541,57 @@ void BangkePanel::OnMouseMove(WPARAM wParam, LPARAM lParam) {
   }
 }
 
+
+namespace {
+// 连续圆角(超椭圆角,指数 n>2):角部曲率从直边平滑渐入,是 mac「圆润」
+// 观感的数学来源;标准圆弧在与直边的切点处曲率突跳,同半径观感更「硬」。
+// mac 侧对应 BangkeView.swift 的 drawSmoothLines 贝塞尔
+constexpr float kCornerExponent = 4.5f;
+constexpr int kCornerSteps = 10;
+
+// 沿超椭圆弧 |dx/r|^n+|dy/r|^n=1 从角 a0 扫到 a1(弧度,屏幕坐标顺时针),
+// 采样加点。n=2 时退化为圆弧
+void AddSmoothCorner(ID2D1GeometrySink* sink, float cx, float cy, float r,
+                     float a0, float a1) {
+  const float e = 2.0f / kCornerExponent;
+  for (int i = 1; i <= kCornerSteps; ++i) {
+    const float t = (float)i / kCornerSteps;
+    const float a = a0 + (a1 - a0) * t;
+    const float c = cosf(a), sn = sinf(a);
+    sink->AddLine(D2D1::Point2F(
+        cx + r * copysignf(powf(fabsf(c), e), c),
+        cy + r * copysignf(powf(fabsf(sn), e), sn)));
+  }
+}
+
+// 构建整块圆角路径(直边 + 四角按 rd 决定圆/直;圆角一律连续圆角)
+void BuildRoundRectPath(ID2D1GeometrySink* sink, const CRect& rc, float radius,
+                        const IsToRoundStruct& rd, bool filled) {
+  float l = (float)rc.left, t = (float)rc.top, r = (float)rc.right,
+        b = (float)rc.bottom;
+  const float pi = 3.14159265f;
+  sink->SetFillMode(D2D1_FILL_MODE_WINDING);
+  sink->BeginFigure(D2D1::Point2F(l + (rd.IsTopLeftNeedToRound ? radius : 0), t),
+                    filled ? D2D1_FIGURE_BEGIN_FILLED
+                           : D2D1_FIGURE_BEGIN_HOLLOW);
+  sink->AddLine(D2D1::Point2F(r - (rd.IsTopRightNeedToRound ? radius : 0), t));
+  if (rd.IsTopRightNeedToRound)
+    AddSmoothCorner(sink, r - radius, t + radius, radius, -pi / 2, 0);
+  sink->AddLine(
+      D2D1::Point2F(r, b - (rd.IsBottomRightNeedToRound ? radius : 0)));
+  if (rd.IsBottomRightNeedToRound)
+    AddSmoothCorner(sink, r - radius, b - radius, radius, 0, pi / 2);
+  sink->AddLine(
+      D2D1::Point2F(l + (rd.IsBottomLeftNeedToRound ? radius : 0), b));
+  if (rd.IsBottomLeftNeedToRound)
+    AddSmoothCorner(sink, l + radius, b - radius, radius, pi / 2, pi);
+  sink->AddLine(D2D1::Point2F(l, t + (rd.IsTopLeftNeedToRound ? radius : 0)));
+  if (rd.IsTopLeftNeedToRound)
+    AddSmoothCorner(sink, l + radius, t + radius, radius, pi, 3 * pi / 2);
+  sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+}
+}  // namespace
+
 void BangkePanel::_FillRoundRect(const CRect& rc,
                                  const D2D1_COLOR_F& color,
                                  float radius,
@@ -548,56 +599,19 @@ void BangkePanel::_FillRoundRect(const CRect& rc,
   ID2D1RenderTarget* rt = pDWR->pRenderTarget.Get();
   if (pDWR->CreateBrush(color) != S_OK)
     return;
-  bool uniform = rd.IsTopLeftNeedToRound && rd.IsTopRightNeedToRound &&
-                 rd.IsBottomLeftNeedToRound && rd.IsBottomRightNeedToRound;
-  if (uniform || radius <= 0.5f) {
-    D2D1_ROUNDED_RECT rr =
-        D2D1::RoundedRect(D2D1::RectF((float)rc.left, (float)rc.top,
-                                      (float)rc.right, (float)rc.bottom),
-                          radius, radius);
-    rt->FillRoundedRectangle(&rr, pDWR->pBrush.Get());
+  if (radius <= 0.5f) {
+    rt->FillRectangle(
+        D2D1::RectF((float)rc.left, (float)rc.top, (float)rc.right,
+                    (float)rc.bottom),
+        pDWR->pBrush.Get());
     return;
   }
-  // per-corner path
   ComPtr<ID2D1PathGeometry> geo;
-  if (FAILED(pDWR->pD2d1Factory->CreatePathGeometry(&geo)))
-    return;
   ComPtr<ID2D1GeometrySink> sink;
-  if (FAILED(geo->Open(&sink)))
+  if (FAILED(pDWR->pD2d1Factory->CreatePathGeometry(&geo)) ||
+      FAILED(geo->Open(&sink)))
     return;
-  float l = (float)rc.left, t = (float)rc.top, r = (float)rc.right,
-        b = (float)rc.bottom;
-  // build path: move start at left+corner, line/arc through corners
-  sink->SetFillMode(D2D1_FILL_MODE_WINDING);
-  sink->BeginFigure(D2D1::Point2F(l + (rd.IsTopLeftNeedToRound ? radius : 0), t),
-                    D2D1_FIGURE_BEGIN_FILLED);
-  sink->AddLine(D2D1::Point2F(r - (rd.IsTopRightNeedToRound ? radius : 0), t));
-  if (rd.IsTopRightNeedToRound)
-    sink->AddArc(D2D1::ArcSegment(
-        D2D1::Point2F(r, t + radius),
-        D2D1::SizeF(radius, radius), 0.f,
-        D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
-  sink->AddLine(
-      D2D1::Point2F(r, b - (rd.IsBottomRightNeedToRound ? radius : 0)));
-  if (rd.IsBottomRightNeedToRound)
-    sink->AddArc(D2D1::ArcSegment(
-        D2D1::Point2F(r - radius, b),
-        D2D1::SizeF(radius, radius), 0.f,
-        D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
-  sink->AddLine(
-      D2D1::Point2F(l + (rd.IsBottomLeftNeedToRound ? radius : 0), b));
-  if (rd.IsBottomLeftNeedToRound)
-    sink->AddArc(D2D1::ArcSegment(
-        D2D1::Point2F(l, b - radius),
-        D2D1::SizeF(radius, radius), 0.f,
-        D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
-  sink->AddLine(D2D1::Point2F(l, t + (rd.IsTopLeftNeedToRound ? radius : 0)));
-  if (rd.IsTopLeftNeedToRound)
-    sink->AddArc(D2D1::ArcSegment(
-        D2D1::Point2F(l + radius, t),
-        D2D1::SizeF(radius, radius), 0.f,
-        D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
-  sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+  BuildRoundRectPath(sink.Get(), rc, radius, rd, true);
   if (SUCCEEDED(sink->Close()))
     rt->FillGeometry(geo.Get(), pDWR->pBrush.Get());
 }
@@ -611,14 +625,11 @@ void BangkePanel::_StrokeRoundRect(const CRect& rc,
   ComPtr<ID2D1SolidColorBrush> brush;
   if (FAILED(rt->CreateSolidColorBrush(color, &brush)))
     return;
-  bool uniform = rd.IsTopLeftNeedToRound && rd.IsTopRightNeedToRound &&
-                 rd.IsBottomLeftNeedToRound && rd.IsBottomRightNeedToRound;
-  if (uniform || radius <= 0.5f) {
-    D2D1_ROUNDED_RECT rr =
-        D2D1::RoundedRect(D2D1::RectF((float)rc.left, (float)rc.top,
-                                      (float)rc.right, (float)rc.bottom),
-                          radius, radius);
-    rt->DrawRoundedRectangle(&rr, brush.Get(), strokeWidth);
+  if (radius <= 0.5f) {
+    rt->DrawRectangle(
+        D2D1::RectF((float)rc.left, (float)rc.top, (float)rc.right,
+                    (float)rc.bottom),
+        brush.Get(), strokeWidth);
     return;
   }
   ComPtr<ID2D1PathGeometry> geo;
@@ -626,37 +637,7 @@ void BangkePanel::_StrokeRoundRect(const CRect& rc,
   if (FAILED(pDWR->pD2d1Factory->CreatePathGeometry(&geo)) ||
       FAILED(geo->Open(&sink)))
     return;
-  float l = (float)rc.left, t = (float)rc.top, r = (float)rc.right,
-        b = (float)rc.bottom;
-  sink->BeginFigure(D2D1::Point2F(l + (rd.IsTopLeftNeedToRound ? radius : 0), t),
-                    D2D1_FIGURE_BEGIN_HOLLOW);
-  sink->AddLine(D2D1::Point2F(r - (rd.IsTopRightNeedToRound ? radius : 0), t));
-  if (rd.IsTopRightNeedToRound)
-    sink->AddArc(D2D1::ArcSegment(
-        D2D1::Point2F(r, t + radius),
-        D2D1::SizeF(radius, radius), 0.f,
-        D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
-  sink->AddLine(
-      D2D1::Point2F(r, b - (rd.IsBottomRightNeedToRound ? radius : 0)));
-  if (rd.IsBottomRightNeedToRound)
-    sink->AddArc(D2D1::ArcSegment(
-        D2D1::Point2F(r - radius, b),
-        D2D1::SizeF(radius, radius), 0.f,
-        D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
-  sink->AddLine(
-      D2D1::Point2F(l + (rd.IsBottomLeftNeedToRound ? radius : 0), b));
-  if (rd.IsBottomLeftNeedToRound)
-    sink->AddArc(D2D1::ArcSegment(
-        D2D1::Point2F(l, b - radius),
-        D2D1::SizeF(radius, radius), 0.f,
-        D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
-  sink->AddLine(D2D1::Point2F(l, t + (rd.IsTopLeftNeedToRound ? radius : 0)));
-  if (rd.IsTopLeftNeedToRound)
-    sink->AddArc(D2D1::ArcSegment(
-        D2D1::Point2F(l + radius, t),
-        D2D1::SizeF(radius, radius), 0.f,
-        D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
-  sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+  BuildRoundRectPath(sink.Get(), rc, radius, rd, false);
   if (SUCCEEDED(sink->Close()))
     rt->DrawGeometry(geo.Get(), brush.Get(), strokeWidth);
 }

@@ -5,6 +5,7 @@
 #include <StringAlgorithm.hpp>
 #include <BangkeConstants.h>
 #include <BangkeUtility.h>
+#include <BangkeNativeTheme.h>
 
 #include <filesystem>
 #include <fstream>
@@ -107,7 +108,8 @@ bool add_session = false;
 void _UpdateUIStyle(RimeConfig* config, UI* ui, bool initialize);
 bool _UpdateUIStyleColor(RimeConfig* config,
                          UIStyle& style,
-                         const std::string& color = std::string());
+                         const std::string& color = std::string(),
+                         bool dark_mode = false);
 void _LoadAppOptions(RimeConfig* config, AppOptionsByAppName& app_options);
 
 void _RefreshTrayIcon(const RimeSessionId session_id,
@@ -177,7 +179,12 @@ void BangkeRimeHandler::_Initialize(bool ignore_deployer) {
         if (rime_api->config_get_string(&config, "style/color_scheme_dark",
                                         buffer, BUF_SIZE)) {
           std::string color_name(buffer);
-          _UpdateUIStyleColor(&config, m_ui->style(), color_name);
+          _UpdateUIStyleColor(&config, m_ui->style(), color_name, true);
+        } else if (rime_api->config_get_string(&config, "style/color_scheme",
+                                               buffer, BUF_SIZE) &&
+                   std::string(buffer) == "native") {
+          // native 自身按外观解析,无需 color_scheme_dark(mac 同语义)
+          _UpdateUIStyleColor(&config, m_ui->style(), "native", true);
         }
       }
       m_base_style = m_ui->style();
@@ -325,7 +332,11 @@ void BangkeRimeHandler::UpdateColorTheme(BOOL darkMode) {
         if (rime_api->config_get_string(&config, "style/color_scheme_dark",
                                         buffer, BUF_SIZE)) {
           std::string color_name(buffer);
-          _UpdateUIStyleColor(&config, m_ui->style(), color_name);
+          _UpdateUIStyleColor(&config, m_ui->style(), color_name, true);
+        } else if (rime_api->config_get_string(&config, "style/color_scheme",
+                                               buffer, BUF_SIZE) &&
+                   std::string(buffer) == "native") {
+          _UpdateUIStyleColor(&config, m_ui->style(), "native", true);
         }
       }
       m_base_style = m_ui->style();
@@ -982,25 +993,32 @@ void BangkeRimeHandler::_LoadSchemaSpecificSettings(
   // load schema color style config
   const int BUF_SIZE = 255;
   char buffer[BUF_SIZE + 1] = {0};
-  const auto update_color_scheme = [&]() {
+  const auto update_color_scheme = [&](bool dark) {
     std::string color_name(buffer);
     RimeConfigIterator preset = {0};
     if (rime_api->config_begin_map(
             &preset, &config, ("preset_color_schemes/" + color_name).c_str())) {
-      _UpdateUIStyleColor(&config, style, color_name);
+      _UpdateUIStyleColor(&config, style, color_name, dark);
       rime_api->config_end(&preset);
     } else {
       RimeConfig bangkeconfig;
       if (rime_api->config_open("weasel", &bangkeconfig)) {
-        _UpdateUIStyleColor(&bangkeconfig, style, color_name);
+        _UpdateUIStyleColor(&bangkeconfig, style, color_name, dark);
         rime_api->config_close(&bangkeconfig);
       }
     }
   };
   const char* key =
       m_current_dark_mode ? "style/color_scheme_dark" : "style/color_scheme";
-  if (rime_api->config_get_string(&config, key, buffer, BUF_SIZE))
-    update_color_scheme();
+  bool has_scheme =
+      rime_api->config_get_string(&config, key, buffer, BUF_SIZE);
+  if (!has_scheme && m_current_dark_mode)
+    // 深色未配置时跟随浅色键;native 会在 _UpdateUIStyleColor 内按外观解析
+    has_scheme =
+        rime_api->config_get_string(&config, "style/color_scheme", buffer,
+                                    BUF_SIZE);
+  if (has_scheme)
+    update_color_scheme(m_current_dark_mode);
   // load schema icon start
   {
     const auto load_icon = [](RimeConfig& config, const char* key1,
@@ -1704,11 +1722,106 @@ static void _UpdateUIStyle(RimeConfig* config, UI* ui, bool initialize) {
                                                 buffer, BUF_SIZE))
     _UpdateUIStyleColor(config, style);
 }
+// macOS 专有字体名 → Windows 可用替代;逐分量替换,保住回退链结构
+static std::wstring _AliasFontFace(const std::wstring& face) {
+  static const std::pair<std::wstring, std::wstring> aliases[] = {
+      {L"STHeitiSC-Light", L"Microsoft YaHei UI:light"},
+      {L"STHeitiSC", L"Microsoft YaHei UI"},
+      {L"PingFang SC", L"Microsoft YaHei UI"},
+      {L"Hiragino Sans GB", L"Microsoft YaHei UI"},
+      {L"Avenir", L"Segoe UI"},
+  };
+  std::wstring result;
+  size_t pos = 0;
+  while (pos < face.size()) {
+    const size_t comma = face.find(L',', pos);
+    std::wstring token =
+        face.substr(pos, comma == std::wstring::npos ? std::wstring::npos
+                                                     : comma - pos);
+    const size_t first = token.find_first_not_of(L" \t");
+    if (first != std::wstring::npos) {
+      const size_t last = token.find_last_not_of(L" \t");
+      token = token.substr(first, last - first + 1);
+      for (const auto& alias : aliases) {
+        if (token == alias.first) {
+          token = alias.second;
+          break;
+        }
+      }
+      if (!result.empty())
+        result += L",";
+      result += token;
+    }
+    if (comma == std::wstring::npos)
+      break;
+    pos = comma + 1;
+  }
+  return result;
+}
+
+// 方案内字体键(mac 的 preset_color_schemes 可带 label/comment 字体),
+// 仅在键存在且有效时覆盖 style 全局值
+static void _ApplySchemeFonts(RimeConfig* config,
+                              const std::string& prefix,
+                              UIStyle& style) {
+  int v = 0;
+  if (rime_api->config_get_int(config, (prefix + "/font_point").c_str(), &v) &&
+      v > 0)
+    style.font_point = v;
+  if (rime_api->config_get_int(config, (prefix + "/label_font_point").c_str(),
+                               &v) &&
+      v > 0)
+    style.label_font_point = v;
+  if (rime_api->config_get_int(config, (prefix + "/comment_font_point").c_str(),
+                               &v) &&
+      v > 0)
+    style.comment_font_point = v;
+  const int BUF_SIZE = 2047;
+  char fbuf[BUF_SIZE + 1] = {0};
+  if (rime_api->config_get_string(config,
+                                  (prefix + "/label_font_face").c_str(), fbuf,
+                                  BUF_SIZE)) {
+    const std::wstring face = _AliasFontFace(u8tow(fbuf));
+    if (!face.empty())
+      style.label_font_face = face;
+  }
+  memset(fbuf, 0, sizeof(fbuf));
+  if (rime_api->config_get_string(config,
+                                  (prefix + "/comment_font_face").c_str(), fbuf,
+                                  BUF_SIZE)) {
+    const std::wstring face = _AliasFontFace(u8tow(fbuf));
+    if (!face.empty())
+      style.comment_font_face = face;
+  }
+}
+
+// style/alpha(mac 整窗不透明度)的近似:等比缩放面板各背景色的 alpha 通道
+static void _ApplyStyleAlpha(RimeConfig* config, UIStyle& style) {
+  double alpha = 1.0;
+  if (!rime_api->config_get_double(config, "style/alpha", &alpha))
+    return;
+  if (alpha >= 1.0)
+    return;
+  if (alpha < 0.0)
+    alpha = 0.0;
+  const auto scale = [alpha](int& color) {
+    const unsigned int c = (unsigned int)color & 0xffffffffu;
+    const unsigned int a = (c >> 24) & 0xffu;
+    color = (int)((c & 0x00ffffffu) |
+                  (((unsigned int)(a * alpha)) << 24));
+  };
+  scale(style.back_color);
+  scale(style.hilited_back_color);
+  scale(style.candidate_back_color);
+  scale(style.hilited_candidate_back_color);
+}
+
 // load color configs to style, by "style/color_scheme" or specific scheme name
 // "color" which is default empty
 static bool _UpdateUIStyleColor(RimeConfig* config,
                                 UIStyle& style,
-                                const std::string& color) {
+                                const std::string& color,
+                                bool dark_mode) {
   const int BUF_SIZE = 255;
   char buffer[BUF_SIZE + 1] = {0};
   std::string color_mark = "style/color_scheme";
@@ -1716,8 +1829,16 @@ static bool _UpdateUIStyleColor(RimeConfig* config,
   if (rime_api->config_get_string(config, color_mark.c_str(), buffer,
                                   BUF_SIZE) ||
       !color.empty()) {
+    const std::string scheme = color.empty() ? std::string(buffer) : color;
+    // native(系统配色):不带色值,mac 走 AppKit 语义色,Windows 用
+    // BangkeNativeTheme 烘焙的两套固定色按外观解析
+    if (scheme == "native") {
+      ApplyNativeColors(style, dark_mode);
+      _ApplyStyleAlpha(config, style);
+      return true;
+    }
     std::string prefix("preset_color_schemes/");
-    prefix += (color.empty()) ? buffer : color;
+    prefix += scheme;
     // define color format, default abgr if not set
     ColorFormat fmt = COLOR_ABGR;
     static constexpr Array<ColorFormat, 3> _colorFmt = {
@@ -1727,7 +1848,9 @@ static bool _UpdateUIStyleColor(RimeConfig* config,
 #define COLOR(key, value, fallback) \
   _RimeGetColor(config, (prefix + "/" + key), value, fmt, fallback)
     COLOR("back_color", style.back_color, 0xffffffff);
-    COLOR("shadow_color", style.shadow_color, 0);
+    // 面板软影默认 20% 黑:mac 的 NSPanel 恒有系统窗影,mac 方案不带
+    // shadow_color,靠这个兜底才有等效的层次
+    COLOR("shadow_color", style.shadow_color, 0x33000000);
     COLOR("prevpage_color", style.prevpage_color, 0);
     COLOR("nextpage_color", style.nextpage_color, 0);
     COLOR("text_color", style.text_color, 0xff000000);
@@ -1758,6 +1881,8 @@ static bool _UpdateUIStyleColor(RimeConfig* config,
           style.hilited_label_text_color);
     COLOR("hilited_mark_color", style.hilited_mark_color, 0);
 #undef COLOR
+    _ApplySchemeFonts(config, prefix, style);
+    _ApplyStyleAlpha(config, style);
     return true;
   }
   return false;

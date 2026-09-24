@@ -7,6 +7,7 @@
 
 #include "Levers.h"
 #include <BangkeUtility.h>
+#include <BangkeNativeTheme.h>
 #include <rime_api.h>
 
 UIStyleSettings::UIStyleSettings() {
@@ -92,6 +93,15 @@ static unsigned int NormalizeColor(unsigned int v,
 
 std::map<std::string, unsigned int> UIStyleSettings::GetSchemeColors(
     const std::string& color_scheme_id) {
+  return GetSchemeColors(color_scheme_id, false);
+}
+
+std::map<std::string, unsigned int> UIStyleSettings::GetSchemeColors(
+    const std::string& color_scheme_id,
+    bool dark) {
+  // native 不带色值,色表来自烘焙常量(ABGR 键名与 yaml 方案一致)
+  if (color_scheme_id == "native")
+    return bangke::NativeSchemeColors(dark);
   std::map<std::string, unsigned int> result;
   std::ifstream ifs(wtou8(BangkeSharedDataPath().wstring()) + "\\weasel.yaml");
   if (!ifs.good())
@@ -130,7 +140,12 @@ std::map<std::string, unsigned int> UIStyleSettings::GetSchemeColors(
       format = val;
       continue;
     }
-    if (key == "name" || key == "author")
+    // 非颜色键:元数据、mac 特有的方案内字体/色域键(字体键由
+    // BangkeRime._ApplySchemeFonts 读取,这里不收)
+    if (key == "name" || key == "author" || key == "color_space" ||
+        key == "font_face" || key == "font_point" ||
+        key == "label_font_face" || key == "label_font_point" ||
+        key == "comment_font_face" || key == "comment_font_point")
       continue;
     // 只收颜色键:剥注释后 0x.. / 十进制
     const auto hash = val.find('#');
@@ -149,6 +164,35 @@ std::map<std::string, unsigned int> UIStyleSettings::GetSchemeColors(
     }
   }
   return result;
+}
+
+int UIStyleSettings::GetSchemeLabelFontPoint(
+    const std::string& color_scheme_id) {
+  std::ifstream ifs(wtou8(BangkeSharedDataPath().wstring()) + "\\weasel.yaml");
+  if (!ifs.good())
+    return 0;
+  std::string line;
+  bool inScheme = false;
+  const std::string want = "  " + color_scheme_id + ":";
+  while (std::getline(ifs, line)) {
+    if (line.rfind(want, 0) == 0) {
+      inScheme = true;
+      continue;
+    }
+    if (inScheme && line.size() > 2 && line[0] == ' ' && line[1] == ' ' &&
+        line[2] != ' ')
+      break;  // 下一个方案开始
+    if (!inScheme)
+      continue;
+    if (line.rfind("    label_font_point:", 0) == 0) {
+      try {
+        return std::stoi(line.substr(21));
+      } catch (...) {
+        return 0;
+      }
+    }
+  }
+  return 0;
 }
 
 std::string UIStyleSettings::GetActiveColorScheme() {
@@ -290,6 +334,30 @@ int UIStyleSettings::GetStyleInt(const std::string& key, int fallback) {
 
 void UIStyleSettings::SetStyleInt(const std::string& key, int value) {
   api_->customize_int(settings_, ("style/" + key).c_str(), value);
+}
+
+double UIStyleSettings::GetStyleDouble(const std::string& key,
+                                       double fallback) {
+  // 整数样式值(如 alpha: 1)会被 yaml 存成 int,字符串路径取不到
+  RimeConfig config = {0};
+  if (api_->settings_get_config(settings_, &config)) {
+    double v = fallback;
+    if (rime_get_api()->config_get_double(&config,
+                                          ("style/" + key).c_str(), &v))
+      return v;
+  }
+  const std::string raw = SharedStyleValue(key);
+  if (raw.empty())
+    return fallback;
+  try {
+    return std::stod(raw);
+  } catch (...) {
+    return fallback;
+  }
+}
+
+void UIStyleSettings::SetStyleDouble(const std::string& key, double value) {
+  api_->customize_double(settings_, ("style/" + key).c_str(), value);
 }
 
 bool UIStyleSettings::GetStyleBool(const std::string& key, bool fallback) {

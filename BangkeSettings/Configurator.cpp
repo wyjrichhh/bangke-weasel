@@ -11,9 +11,12 @@
 #include <BangkeConstants.h>
 #include <BangkeIPC.h>
 #include <BangkeUtility.h>
+#include "UIStyleSettings.h"
 #pragma warning(disable : 4005)
 #include <rime_api.h>
 #pragma warning(default : 4005)
+
+#include <set>
 
 static void CreateFileIfNotExist(std::string filename) {
   std::filesystem::path file_path = BangkeUserDataPath() / u8tow(filename);
@@ -54,6 +57,110 @@ void Configurator::Initialize() {
   rime_api->deployer_initialize(NULL);
 }
 
+// 一次性迁移(0.24 → 0.25 升级):
+// ① 配色方案表与 mac 对齐后,补丁里指向已删方案的 style/color_scheme(_dark)
+//   改写为 native,否则服务端落进 fallback 色;
+// ② 0.3.x 设置程序写进补丁的布局/字体/样式键(旧度量:margin 12/7、胶囊
+//   高亮、字号 14…)会把 0.25 的 mac 化出厂全部盖掉 —— 删除这些补丁行,
+//   让新出厂生效。保留:配色方案选择、alpha(0.4.0 键)、preset_color_schemes
+//   用户自定义块。以补丁里的标记键保证只跑一次(以后版本的保存不受影响)。
+// 只扫 levers 写出的扁平键行;幂等,处于调用方的部署临界区内。
+static void MigrateColorSchemes() {
+  std::vector<ColorSchemeInfo> presets;
+  {
+    UIStyleSettings ui;
+    if (!ui.GetPresetColorSchemes(&presets))
+      return;
+  }
+  std::set<std::string> valid{"bangke_custom"};
+  for (const auto& s : presets)
+    valid.insert(s.color_scheme_id);
+
+  const std::filesystem::path patch =
+      BangkeUserDataPath() / L"weasel.custom.yaml";
+  std::ifstream in(patch, std::ios::binary);
+  if (!in.good())
+    return;
+  const std::string content((std::istreambuf_iterator<char>(in)),
+                            std::istreambuf_iterator<char>());
+  in.close();
+  if (content.find("__migrated_025") != std::string::npos)
+    return;  // 已迁移过
+
+  bool dirty = false;
+  bool legacyHit = false;
+  std::string out;
+  out.reserve(content.size());
+  size_t pos = 0;
+  while (pos <= content.size()) {
+    const size_t eol = content.find('\n', pos);
+    std::string line = content.substr(
+        pos, eol == std::string::npos ? std::string::npos : eol - pos);
+    std::string trimmed = line;
+    trimmed.erase(0, trimmed.find_first_not_of(" \t"));
+    // 剥掉引号形态的键名前缀,得到裸键(带冒号后缀的形态不影响前缀判断)
+    std::string bare = trimmed;
+    if (bare.size() >= 2 && bare[0] == '"') {
+      const auto close = bare.find('"', 1);
+      if (close != std::string::npos)
+        bare = bare.substr(1, close - 1) + ":";
+    }
+
+    const bool isStyleKey = bare.rfind("style/", 0) == 0;
+    const bool keep = isStyleKey &&
+                      (bare.rfind("style/color_scheme", 0) == 0 ||
+                       bare.rfind("style/alpha", 0) == 0 ||
+                       bare.rfind("style/preset_color_schemes", 0) == 0);
+    const bool legacy = isStyleKey && !keep;
+
+    for (const char* key : {"style/color_scheme", "style/color_scheme_dark"}) {
+      const std::string plain = std::string(key) + ":";
+      const std::string quoted = "\"" + std::string(key) + "\":";
+      const bool plainHit = trimmed.rfind(plain, 0) == 0;
+      const bool quotedHit = trimmed.rfind(quoted, 0) == 0;
+      if (!plainHit && !quotedHit)
+        continue;
+      std::string value =
+          trimmed.substr((plainHit ? plain : quoted).size());
+      const auto hash = value.find('#');
+      if (hash != std::string::npos)
+        value = value.substr(0, hash);
+      value.erase(0, value.find_first_not_of(" \t"));
+      value.erase(value.find_last_not_of(" \t\r") + 1);
+      if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
+        value = value.substr(1, value.size() - 2);
+      if (!value.empty() && !valid.count(value)) {
+        const size_t indent = line.find_first_not_of(" \t");
+        line = line.substr(0, indent) + plain + std::string(" native");
+        dirty = true;
+      }
+    }
+
+    if (legacy) {
+      legacyHit = true;
+      dirty = true;
+      // 跳过该行(删除)
+    } else {
+      out += line;
+      if (eol != std::string::npos)
+        out += '\n';
+    }
+    if (eol == std::string::npos)
+      break;
+    pos = eol + 1;
+  }
+  if (legacyHit) {
+    // 迁移标记写进补丁,保证只跑一次
+    if (!out.empty() && out.back() != '\n')
+      out += '\n';
+    out += "  \"style/__migrated_025\": true\n";
+  }
+  if (!dirty)
+    return;
+  std::ofstream of(patch, std::ios::binary | std::ios::trunc);
+  of << out;
+}
+
 int Configurator::UpdateWorkspace(bool report_errors) {
   HANDLE hMutex = CreateMutexW(NULL, TRUE, L"BangkeDeployerMutex");
   if (!hMutex)
@@ -72,6 +179,7 @@ int Configurator::UpdateWorkspace(bool report_errors) {
 
   {
     RimeApi* rime = rime_get_api();
+    MigrateColorSchemes();
     rime->deploy();
     rime->deploy_config_file("weasel.yaml", "config_version");
   }
