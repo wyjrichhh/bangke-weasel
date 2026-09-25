@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 
 #include <thread>
+#include <QDebug>
 #include <QDesktopServices>
 #include <QUrl>
 
@@ -141,6 +142,8 @@ void AppController::saveAndDeploy() {
   // 部署;样式/行为类改动服务端重读配置即可,不做词典编译与配置重摊。
   // 两类都在后台线程执行 —— 部署再久窗口也不卡
   const bool fullDeploy = switcherChanged || aiChanged;
+  qWarning("BKSAVE g=%d s=%d a=%d w=%d full=%d", generalChanged,
+           styleChanged, aiChanged, switcherChanged, fullDeploy);
   setSaving(true);
 
   std::thread worker([this, fullDeploy] {
