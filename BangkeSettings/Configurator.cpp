@@ -191,11 +191,14 @@ int Configurator::UpdateWorkspace(bool report_errors) {
   return 0;
 }
 
-// 轻量生效:样式/行为类改动走「样式热重载」管道 —— 服务端只重读 weasel
-// 配置并推给全部会话,毫秒级;不销毁引擎(维护握手路径重启引擎要连带
-// 重载 AI 模型,十几秒)。方案列表/AI 配置影响 schema 编译,仍走
-// UpdateWorkspace 全量部署
+// 轻量生效:样式/行为类改动 = 只合并 weasel 配置 + 服务端热重载。
+// deploy_config_file 按【源文件时间戳】对照(ConfigNeedsUpdate),custom
+// 补丁一变就重建 build/weasel.yaml —— 毫秒级,SchemaUpdate/词典编译
+// 完全不跑(词典只在进程初始化或方案/AI 配置变更保存时才碰)。
+// 方案列表/AI 配置影响 schema 编译,仍走 UpdateWorkspace 全量部署
 int Configurator::ReloadService() {
+  RimeApi* rime = rime_get_api();
+  rime->deploy_config_file("weasel.yaml", "config_version");
   bangke::Client client;
   if (!client.Connect())
     return 1;

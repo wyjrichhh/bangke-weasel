@@ -830,15 +830,9 @@ void BangkeRimeHandler::_GetCandidateInfo(CandidateInfo& cinfo,
 }
 
 void BangkeRimeHandler::ReloadStyle() {
-  // 热重载前先做一次轻量部署检查:config_open("weasel") 读的是部署产物
-  // build/weasel.yaml,用户刚保存的 custom 补丁若不合并进去,重读到的
-  // 还是旧值(表现为"改了不生效")。start_maintenance(False) 按需只重
-  // 合并配置(毫秒);schema/词典没变就不会碰编译
-  if (rime_api->start_maintenance(False)) {
-    rime_api->join_maintenance_thread();
-  }
-  // 样式热重载:按当前明暗重读 weasel 配置并推给全部会话 —— 不销毁
-  // 引擎、不重载词典与 AI 模型(那要十几秒),改配色/字号/布局毫秒级生效
+  // 样式热重载:重读 weasel 配置并推给全部会话 —— 不销毁引擎、不跑
+  // schema/词典任务、不重载 AI 模型。配置的合并(deploy_config_file)
+  // 由调用方在发命令前完成 —— 本函数假定 build 产物已是最新
   UpdateColorTheme(m_current_dark_mode);
 }
 

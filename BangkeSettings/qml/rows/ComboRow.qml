@@ -100,7 +100,16 @@ RowShell {
 
     Popup {
       id: menu
-      y: display.height + 5
+      // 向下空间不够时向上翻(mac 弹出菜单同行为) —— 否则弹层超出
+      // 窗口底部,最后几条永远看不到(窗口外的部分点不到也滚不到)
+      readonly property bool flipUp: {
+        var w = display.Window.window
+        if (!w)
+          return false
+        var bottom = display.mapToItem(w.contentItem, 0, display.height + 5).y
+        return bottom + menu.height > w.contentItem.height - 8
+      }
+      y: flipUp ? -height - 5 : display.height + 5
       width: row.fieldWidth
       // 高度按条目数算(行高恒 24),不依赖内容实例化的结果
       height: Math.min(row.entries.length * 24 + 6, 300)
