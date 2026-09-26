@@ -140,17 +140,7 @@ Item {
   implicitWidth: Math.ceil(unitW * zoom)
   implicitHeight: Math.ceil(unitH * zoom)
 
-  // 面板本体 + 单层极淡叠影(不用 MultiEffect:shader 阴影在软件/RDP
-  // 渲染下退化成实心轮廓块)。高亮顶满面板后叠影紧贴高亮四周 ——
-  // 稍重就会被读成「高亮后面的矩形阴影」,对齐引擎 shadow_radius=2
-  // 的轻量(单层 6% 黑,底部多探 1px)
-  Rectangle {
-    anchors.fill: parent
-    anchors.margins: -1
-    anchors.bottomMargin: -2
-    radius: zz((m.cornerRadius !== undefined ? m.cornerRadius : 9) + 1)
-    color: Qt.rgba(0, 0, 0, 0.06)
-  }
+
   Rectangle {
     id: panelFace
     anchors.fill: parent
