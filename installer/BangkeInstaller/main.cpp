@@ -105,6 +105,8 @@ struct MsiJob {
   enum Op { Install, Repair, Uninstall } op;
   QString msiPath, productCode;
   bool wasInstalled = false;  // 操作开始前产品是否已装（区分安装/升级文案）
+  bool forceReinstall = false;  // 同/低版本"重新安装":不强制覆盖的话
+                                // MSI 对同版本 /i 默认不替换任何文件
 };
 
 static QString MsiLogPath(const QString& msi) { return msi + ".log"; }
@@ -123,6 +125,13 @@ static QStringList BuildArgs(const MsiJob& job) {
   switch (job.op) {
     case MsiJob::Install:
       args << "/i" << QDir::toNativeSeparators(job.msiPath);
+      // 同版本重装必须强制:Windows Installer 对"同版本 /i"默认只补
+      // 缺失文件(REINSTALLMODE=pou),用户点了重装却什么都没换。
+      // amus = 无条件按包内版本覆盖全部文件
+      if (job.forceReinstall) {
+        args << "REINSTALLMODE=amus"
+             << "REINSTALL=ALL";
+      }
       break;
     case MsiJob::Repair:
       args << "/f" << installed;
@@ -560,13 +569,14 @@ class MainWindow : public QWidget {
     out->start(QAbstractAnimation::DeleteWhenStopped);
   }
 
-  void startJob(MsiJob::Op op) {
+  void startJob(MsiJob::Op op, bool force = false) {
     if (m_msiPath.isEmpty()) {
       QMessageBox::warning(this, QStringLiteral(u"蚌壳拼音"),
                            QStringLiteral(u"未找到 BangkeSetup-*.msi，请与安装程序放在同一目录。"));
       return;
     }
-    m_job = MsiJob{op, m_msiPath, m_productCode, !m_productCode.isEmpty()};
+    m_job = MsiJob{op, m_msiPath, m_productCode, !m_productCode.isEmpty(),
+                   force};
     setActionText(QStringLiteral(u"正在准备…"));
     m_progressTitle->setText(op == MsiJob::Uninstall ? QStringLiteral(u"正在卸载 蚌壳拼音")
                                 : op == MsiJob::Repair  ? QStringLiteral(u"正在修复 蚌壳拼音")
@@ -753,10 +763,19 @@ class MainWindow : public QWidget {
     if (installed) {
       const QString cur = InstalledVersion(m_productCode);
       m_installedLabel->setText(QStringLiteral(u"已安装版本 %1").arg(cur));
-      // 升级与重装都走 /i：MajorUpgrade 自动按 UpgradeCode 接管旧版本
-      m_primaryBtn->setText(ParseVersion(m_pkgVersion) > ParseVersion(cur)
-                                ? QStringLiteral(u"升级到 %1").arg(m_pkgVersion)
-                                : QStringLiteral(u"重新安装"));
+      // 升级与重装都走 /i：MajorUpgrade 自动按 UpgradeCode 接管旧版本。
+      // 同版本:强制覆盖(否则 MSI 不替换文件,点了等于没装);
+      // 低版本(用户翻出了旧安装包):明示"降级",不让它伪装成重装
+      if (ParseVersion(m_pkgVersion) > ParseVersion(cur)) {
+        m_primaryBtn->setText(QStringLiteral(u"升级到 %1").arg(m_pkgVersion));
+        m_primaryForce = false;
+      } else if (ParseVersion(m_pkgVersion) == ParseVersion(cur)) {
+        m_primaryBtn->setText(QStringLiteral(u"重新安装（覆盖全部文件）"));
+        m_primaryForce = true;
+      } else {
+        m_primaryBtn->setText(QStringLiteral(u"降级到 %1").arg(m_pkgVersion));
+        m_primaryForce = true;
+      }
     }
   }
 
@@ -819,7 +838,9 @@ class MainWindow : public QWidget {
     m_installedLabel->setAlignment(Qt::AlignCenter);
     inst->addWidget(m_installedLabel);
     m_primaryBtn = accentButton(QStringLiteral(u"重新安装"));
-    connect(m_primaryBtn, &QPushButton::clicked, this, [this] { startJob(MsiJob::Install); });
+    connect(m_primaryBtn, &QPushButton::clicked, this, [this] {
+      startJob(MsiJob::Install, m_primaryForce);
+    });
     inst->addWidget(m_primaryBtn);
     auto* btnRow = new QHBoxLayout();
     auto* repairBtn = new QPushButton(QStringLiteral(u"修复安装"));
@@ -930,6 +951,7 @@ class MainWindow : public QWidget {
   }
 
   QString m_msiPath, m_productCode, m_pkgVersion;
+  bool m_primaryForce = false;
   QStackedWidget* m_stack = nullptr;
   QFrame *welcomePage_ = nullptr, *progressPage_ = nullptr, *finishPage_ = nullptr;
   QFrame *freshGroup_ = nullptr, *installedGroup_ = nullptr;
