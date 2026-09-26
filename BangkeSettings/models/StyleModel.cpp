@@ -173,9 +173,9 @@ StyleControlModel::StyleControlModel(QObject* parent)
             QStringLiteral("7"));
   addSlider(kLayout, QStringLiteral(u"行距"),
             QStringLiteral("layout/candidate_spacing"), 0, 30,
-            QStringLiteral("6"));
+            QStringLiteral("10"));
   addSlider(kLayout, QStringLiteral(u"预编辑间距"),
-            QStringLiteral("layout/spacing"), 0, 30, QStringLiteral("8"));
+            QStringLiteral("layout/spacing"), 0, 30, QStringLiteral("10"));
   addSlider(kLayout, QStringLiteral(u"阴影大小"),
             QStringLiteral("layout/shadow_radius"), 0, 30,
             QStringLiteral("2"));
@@ -567,14 +567,14 @@ void StyleModel::updatePreview() {
       // 高亮纵向外扩与边框:引擎只有 border_width>0 才画边框,
       // 预览与引擎同判,不额外加描边
       {QStringLiteral("hilitePaddingY"),
-       settings_.GetStyleInt("layout/hilite_padding_y", 3)},
+       settings_.GetStyleInt("layout/hilite_padding_y", 5)},
       {QStringLiteral("borderWidth"),
        settings_.GetStyleInt("layout/border_width", 0)},
       {QStringLiteral("pageSize"), pageSize_},
       {QStringLiteral("candidateSpacing"),
-       styleControls_->intValue(QStringLiteral("layout/candidate_spacing"), 5)},
+       styleControls_->intValue(QStringLiteral("layout/candidate_spacing"), 10)},
       {QStringLiteral("spacing"),
-       styleControls_->intValue(QStringLiteral("layout/spacing"), 8)},
+       styleControls_->intValue(QStringLiteral("layout/spacing"), 10)},
       {QStringLiteral("hiliteSpacing"),
        settings_.GetStyleInt("layout/hilite_spacing", 5)},
       {QStringLiteral("fontPoint"), fontSize_},

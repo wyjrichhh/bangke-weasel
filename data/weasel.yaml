@@ -58,16 +58,18 @@ style:
     # mac edgeInset = border_width + corner_radius = 5;
     # margin_x 0 + hilite_padding_x 5 经引擎 fixup 后 margin_x = 5,
     # 高亮矩形外扩至面板左右边缘(满铺),文字仍缩进 5。
-    # padding_y 3 让高亮块带上下留白(mac 单行实拍高亮上下各留 3-4px;
-    # 引擎 fixup 对 spacing/candidate_spacing 取 max(现值, padding_y*2))
+    # 高亮纵向顶满面板:padding_y = margin_y(5) → 高亮矩形恰好触到
+    # 面板上下缘,_SnapHighlightToPanel 贴边(圆角取面板半径)。
+    # fixup 使 spacing/candidate_spacing = max(现值, padding_y*2)=10,
+    # 多行时高亮块纵向相连(mac 实拍同观感:行间无缝、无灰底露出)
     margin_x: 0
     margin_y: 5
-    spacing: 8
-    candidate_spacing: 6
+    spacing: 10
+    candidate_spacing: 10
     hilite_spacing: 5
     hilite_padding: 0
     hilite_padding_x: 5
-    hilite_padding_y: 3
+    hilite_padding_y: 5
     # 高亮圆角与面板一致(mac 实拍单行/多行高亮均 6-8px 圆角,尽管
     # hilited_corner_radius 配 0 —— 观感为准)
     round_corner: 7
