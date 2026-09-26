@@ -37,7 +37,9 @@ Item {
 
   function tint(key, fallback) {
     var c = Theme.argb(colors ? colors[key] : undefined, fallback)
-    if (key === "back_color" && m.alpha !== undefined)
+    // 整窗透明语义(同实际候选窗的 ULW):alpha 乘到所有颜色,
+    // 文字与高亮随之变淡 —— 只乘背景会残留灰块
+    if (m.alpha !== undefined)
       c = Qt.rgba(c.r, c.g, c.b, c.a * m.alpha)
     return c
   }
