@@ -1174,7 +1174,9 @@ void BangkePanel::DoPaint() {
     POINT WindowPosAtScreen = {rect.left, rect.top};
     POINT PointOriginal = {0, 0};
     SIZE sz = {rcw.Width(), rcw.Height()};
-    BLENDFUNCTION bf = {AC_SRC_OVER, 0, 0XFF, AC_SRC_ALPHA};
+    BLENDFUNCTION bf = {AC_SRC_OVER, 0,
+                        (BYTE)max(0, min(255, m_style.window_alpha)),
+                        AC_SRC_ALPHA};
     UpdateLayeredWindow(m_hWnd, ScreenDC, &WindowPosAtScreen, &sz, memDC,
                         &PointOriginal, RGB(0, 0, 0), &bf, ULW_ALPHA);
     ::ReleaseDC(NULL, ScreenDC);

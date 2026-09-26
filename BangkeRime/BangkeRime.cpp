@@ -1802,25 +1802,21 @@ static void _ApplySchemeFonts(RimeConfig* config,
   }
 }
 
-// style/alpha(mac 整窗不透明度)的近似:等比缩放面板各背景色的 alpha 通道
+// style/alpha = mac alphaValue 的整窗语义:记入 window_alpha,由面板
+// 在 UpdateLayeredWindow 的常量 alpha 应用 —— 文字随背景一起半透明,
+// 下层内容可见。不再乘背景色(那只让背景变灰,文字仍不透明,观感是
+// 「变暗」而非「透下层」)
 static void _ApplyStyleAlpha(RimeConfig* config, UIStyle& style) {
   double alpha = 1.0;
   if (!rime_api->config_get_double(config, "style/alpha", &alpha))
     return;
-  if (alpha >= 1.0)
+  if (alpha >= 1.0) {
+    style.window_alpha = 255;
     return;
+  }
   if (alpha < 0.0)
     alpha = 0.0;
-  const auto scale = [alpha](int& color) {
-    const unsigned int c = (unsigned int)color & 0xffffffffu;
-    const unsigned int a = (c >> 24) & 0xffu;
-    color = (int)((c & 0x00ffffffu) |
-                  (((unsigned int)(a * alpha)) << 24));
-  };
-  scale(style.back_color);
-  scale(style.hilited_back_color);
-  scale(style.candidate_back_color);
-  scale(style.hilited_candidate_back_color);
+  style.window_alpha = (int)(alpha * 255.0);
 }
 
 // load color configs to style, by "style/color_scheme" or specific scheme name

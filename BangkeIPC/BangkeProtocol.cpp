@@ -180,6 +180,7 @@ void PutUIStyle(Writer& w, const bangke::UIStyle& s) {
   w.I32(s.client_caps);
   w.I32(s.baseline);
   w.I32(s.linespacing);
+  w.I32(s.window_alpha);
 }
 
 bool GetUIStyle(Reader& r, bangke::UIStyle& s) {
@@ -252,6 +253,7 @@ bool GetUIStyle(Reader& r, bangke::UIStyle& s) {
   s.client_caps = r.I32();
   s.baseline = r.I32();
   s.linespacing = r.I32();
+  s.window_alpha = r.I32();
   return r.Ok();
 }
 
