@@ -9,7 +9,7 @@ $root = Split-Path $PSScriptRoot -Parent
 $output = Join-Path $root "output"
 
 $msi = Get-ChildItem $output -Filter "BangkeSetup-*.msi" |
-  Sort-Object Name | Select-Object -Last 1
+  Sort-Object LastWriteTime | Select-Object -Last 1
 if (-not $msi) { throw "output 下没有 BangkeSetup-*.msi,先跑 installer\build_msi.bat" }
 $version = $msi.BaseName -replace '^BangkeSetup-', '' -replace '-x64$', ''
 

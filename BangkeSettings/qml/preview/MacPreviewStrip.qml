@@ -126,10 +126,11 @@ ColumnLayout {
       }
     ]
 
-    // 中线
+    // 中线:与切分方向垂直 —— 单行(上下切分)画横线,多行(左右切分)
+    // 画竖线。曾误绑已被改名的 frame.wide,恒 falsy 导致单行时残留竖线
     Rectangle {
-      width: frame.wide ? parent.width : 1
-      height: frame.wide ? 1 : parent.height
+      width: frame.singleLine ? parent.width : 1
+      height: frame.singleLine ? 1 : parent.height
       anchors.centerIn: parent
       color: Qt.rgba(0.5, 0.5, 0.5, 0.5)
     }
