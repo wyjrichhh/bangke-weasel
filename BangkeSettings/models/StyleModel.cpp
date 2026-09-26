@@ -531,6 +531,7 @@ void StyleModel::updatePreview() {
     previewDark_.insert(QString::fromStdString(kv.first), (uint)kv.second);
 
   const bool horizontal = layout_ == QStringLiteral("horizontal");
+  previewHorizontal_ = horizontal;
   // margin 经引擎 fixup = max(|margin|, hilite_padding),预览按同式
   const int marginX = std::max(
       styleControls_->intValue(QStringLiteral("layout/margin_x"), 0),

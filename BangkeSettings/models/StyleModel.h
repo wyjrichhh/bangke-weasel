@@ -108,6 +108,9 @@ class StyleModel : public QObject {
   Q_PROPERTY(QVariantMap previewDark READ previewDark NOTIFY previewChanged)
   // 预览面板的度量入参:真实圆角/间距/字号/横竖排/内联拼音/不透明度
   Q_PROPERTY(QVariantMap previewMetrics READ previewMetrics NOTIFY previewChanged)
+  // 单行排列的独立 bool:QML 对 QVariantMap 下标的绑定(previewMetrics.
+  // horizontal)在首载信号时不重求值,首屏预览方向曾滞留多行 → 竖线
+  Q_PROPERTY(bool previewHorizontal READ previewHorizontal NOTIFY previewChanged)
 
  public:
   explicit StyleModel(QObject* parent = nullptr);
@@ -125,6 +128,7 @@ class StyleModel : public QObject {
   QVariantMap previewLight() const { return previewLight_; }
   QVariantMap previewDark() const { return previewDark_; }
   QVariantMap previewMetrics() const { return previewMetrics_; }
+  bool previewHorizontal() const { return previewHorizontal_; }
 
   // 首次进入才载;载入后不重读,草稿跨页保持
   Q_INVOKABLE void load();
@@ -152,6 +156,7 @@ class StyleModel : public QObject {
   QVariantMap previewLight_;
   QVariantMap previewDark_;
   QVariantMap previewMetrics_;
+  bool previewHorizontal_ = false;
   // 每页候选数(default.custom.yaml),预览条数跟随实际
   int pageSize_ = 5;
 

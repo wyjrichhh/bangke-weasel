@@ -77,8 +77,7 @@ ColumnLayout {
 
     // 切分方向直接跟随「候选排列」(mac 的测量判据本质就是区分单行/多行;
     // 用配置值零测量误差):单行横条上下切分(各得全宽),多行面板左右切分
-    readonly property bool singleLine:
-        app.style.previewMetrics.horizontal === true
+    readonly property bool singleLine: app.style.previewHorizontal
     readonly property real gap: 1
 
     Half { id: lightHalf; dark: false }

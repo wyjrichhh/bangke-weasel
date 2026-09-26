@@ -16,7 +16,7 @@ Item {
   property var colors: ({})
   property var m: ({})
   property real zoom: 1
-  property bool horizontal: m.horizontal === true
+  property bool horizontal: m.horizontal === true  // metrics map 由父级传入(非属性绑定,安全)
 
   // 样例池:首条高亮并带注释;显示条数 = 每页候选数(与实际一致)
   readonly property var candPool: [
