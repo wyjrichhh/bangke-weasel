@@ -82,7 +82,8 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM w, LPARAM l) {
   return DefWindowProcW(h, msg, w, l);
 }
 
-static bool ExtractPayload(const std::wstring& dir) {
+static bool ExtractPayload(const std::wstring& dir,
+                            std::wstring* msiNameOut = nullptr) {
   HRSRC mres = FindResourceW(NULL, MAKEINTRESOURCEW(100), RT_RCDATA);
   if (!mres)
     return false;
@@ -110,6 +111,10 @@ static bool ExtractPayload(const std::wstring& dir) {
 
   int done = 0;
   for (const auto& [id, rel] : items) {
+    if (msiNameOut && msiNameOut->empty() &&
+        rel.rfind(L"BangkeSetup-") == 0 && rel.size() > 4 &&
+        rel.compare(rel.size() - 4, 4, L".msi") == 0)
+      *msiNameOut = rel;  // 清单里的 MSI 名:传给安装器,别让它按目录挑
     swprintf_s(g_msg, L"正在解包安装文件… %d/%d", ++done, (int)items.size());
     InvalidateRect(g_wnd, NULL, FALSE);  // 让小窗文案跟上
     Pump();
@@ -181,7 +186,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
   DeleteTree(dir);  // 上次残留
   CreateDirectoryW(dir.c_str(), NULL);
 
-  bool ok = ExtractPayload(dir);
+  std::wstring msiName;
+  bool ok = ExtractPayload(dir, &msiName);
   Log(ok ? L"extract ok" : L"extract FAILED");
   if (ok) {
     wcscpy_s(g_msg, L"");
@@ -190,8 +196,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
     // 本壳已 requireAdministrator(双击时 UAC 提权一次,与正规安装器一致),
     // 提权父进程可直接 CreateProcessW 子安装器:真句柄,确定性等待。
     // 此前 ShellExecuteEx 交提权代理不回句柄,壳随即清理临时目录,
-    // 把刚被代理拉起的安装器连文件带目录拆了
-    const std::wstring cmd = L"\"" + exe + L"\"";
+    // 把刚被代理拉起的安装器连文件带目录拆了。
+    // MSI 文件名作为参数传下去:临时目录若有历史残留 MSI,安装器按
+    // 文件名挑会挑错(字典序 0.4.9 > 0.4.13),参数是唯一真相
+    std::wstring cmd = L"\"" + exe + L"\"" +
+                       (msiName.empty() ? L"" : (L" \"" + msiName + L"\""));
     std::vector<wchar_t> cmdBuf(cmd.begin(), cmd.end());
     cmdBuf.push_back(L'\0');
     STARTUPINFOW si{};

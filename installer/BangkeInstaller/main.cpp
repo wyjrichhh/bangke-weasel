@@ -36,10 +36,34 @@
 
 static const wchar_t* kUpgradeCode = L"{8F1D4B33-9C2A-4E6D-B0F7-3A5C8E21D940}";
 
+static QString MsiPackageVersion(const QString& path);
+static std::tuple<int, int, int> ParseVersion(const QString& v);
+
 static QString FindMsi() {
+  // 引导壳会把本次解包的 MSI 文件名作为第一个参数传入 —— 参数是
+  // 唯一真相。兜底(直接运行安装器)按 ProductVersion 数值挑最大:
+  // 文件名字典序会把 0.4.9 排在 0.4.13 后面,必挑错
+  const auto args = QCoreApplication::arguments();
+  if (args.size() > 1) {
+    const QFileInfo byArg(args.at(1));
+    if (byArg.exists() && byArg.suffix().compare(QLatin1String("msi"),
+                                                 Qt::CaseInsensitive) == 0)
+      return byArg.absoluteFilePath();
+  }
   QDir dir(QApplication::applicationDirPath());
-  const auto msis = dir.entryList({QStringLiteral("BangkeSetup-*.msi")}, QDir::Files, QDir::Name);
-  return msis.isEmpty() ? QString() : dir.absoluteFilePath(msis.last());
+  const auto msis = dir.entryList({QStringLiteral("BangkeSetup-*.msi")},
+                                  QDir::Files);
+  QString best;
+  std::tuple<int, int, int> bestVer{-1, -1, -1};
+  for (const auto& name : msis) {
+    const QString path = dir.absoluteFilePath(name);
+    const auto ver = ParseVersion(MsiPackageVersion(path));
+    if (ver > bestVer) {
+      bestVer = ver;
+      best = path;
+    }
+  }
+  return best;
 }
 
 static QString InstalledProductCode() {
