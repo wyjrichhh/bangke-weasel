@@ -58,19 +58,19 @@ style:
     # mac edgeInset = border_width + corner_radius = 5;
     # margin_x 0 + hilite_padding_x 5 经引擎 fixup 后 margin_x = 5,
     # 高亮矩形外扩至面板左右边缘(满铺),文字仍缩进 5。
-    # padding_y 2 让高亮块盖住大半个行距(mac 高亮 ≈ 字高+行距;
-    # 引擎 fixup 对 spacing/candidate_spacing 取 max(现值, padding_y*2),
-    # 2 不影响 8/5)
+    # padding_y 3 让高亮块带上下留白(mac 单行实拍高亮上下各留 3-4px;
+    # 引擎 fixup 对 spacing/candidate_spacing 取 max(现值, padding_y*2))
     margin_x: 0
     margin_y: 5
     spacing: 8
-    candidate_spacing: 5
+    candidate_spacing: 6
     hilite_spacing: 5
     hilite_padding: 0
     hilite_padding_x: 5
-    hilite_padding_y: 2
-    # 别名 hilited_corner_radius;mac hilited_corner_radius: 0 → 高亮直角
-    round_corner: 0
+    hilite_padding_y: 3
+    # 高亮圆角与面板一致(mac 实拍单行/多行高亮均 6-8px 圆角,尽管
+    # hilited_corner_radius 配 0 —— 观感为准)
+    round_corner: 7
     # mac 的 7 是 pt(≈9.3 逻辑像素),weasel 单位是像素,直译会小 1/3 显「方」
     corner_radius: 9
     # mac NSPanel 自带系统窗影;Windows 侧用小半径软影近似

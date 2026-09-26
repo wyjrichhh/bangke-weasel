@@ -169,7 +169,7 @@ Item {
   // 纵向 = 行高 + 上下各外扩 hilite_padding_y。圆角逻辑同引擎
   // (_SnapHighlightToPanel):贴面板顶的那沿用面板半径(首行=上沿圆),
   // 另一沿用 round_corner(默认 0=直角)→ 首行高亮「上圆下直」
-  readonly property real hilitePadY: m.hilitePaddingY !== undefined ? m.hilitePaddingY : 2
+  readonly property real hilitePadY: m.hilitePaddingY !== undefined ? m.hilitePaddingY : 3
   readonly property real hiliteR: Math.max(m.hiliteRadius !== undefined ? m.hiliteRadius : 0,
                                            m.cornerRadius !== undefined ? m.cornerRadius : 9)
   readonly property color hiliteColor: mini.tint("hilited_candidate_back_color", "#FFB3D7FF")

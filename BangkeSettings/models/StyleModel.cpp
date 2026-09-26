@@ -170,10 +170,10 @@ StyleControlModel::StyleControlModel(QObject* parent)
             QStringLiteral("9"));
   addSlider(kLayout, QStringLiteral(u"高亮圆角半径"),
             QStringLiteral("layout/round_corner"), 0, 30,
-            QStringLiteral("0"));
+            QStringLiteral("7"));
   addSlider(kLayout, QStringLiteral(u"行距"),
             QStringLiteral("layout/candidate_spacing"), 0, 30,
-            QStringLiteral("5"));
+            QStringLiteral("6"));
   addSlider(kLayout, QStringLiteral(u"预编辑间距"),
             QStringLiteral("layout/spacing"), 0, 30, QStringLiteral("8"));
   addSlider(kLayout, QStringLiteral(u"阴影大小"),
@@ -566,7 +566,7 @@ void StyleModel::updatePreview() {
       // 高亮纵向外扩与边框:引擎只有 border_width>0 才画边框,
       // 预览与引擎同判,不额外加描边
       {QStringLiteral("hilitePaddingY"),
-       settings_.GetStyleInt("layout/hilite_padding_y", 2)},
+       settings_.GetStyleInt("layout/hilite_padding_y", 3)},
       {QStringLiteral("borderWidth"),
        settings_.GetStyleInt("layout/border_width", 0)},
       {QStringLiteral("pageSize"), pageSize_},
