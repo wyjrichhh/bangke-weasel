@@ -218,7 +218,7 @@ int Configurator::EnsureAiDefaults() {
 // ITfInputProcessorProfileMgr::RegisterProfile，它只做机器层面的注册（HKLM 下能看到
 // InprocServer32 和 LanguageProfile），不碰用户列表。大版本升级是先卸后装，卸载会把用户
 // 列表里那条一并带走，于是装完 Win+Space 切不过去——表现成"只能打英文"。
-int Configurator::EnsureInputMethodRegistered() {
+int Configurator::EnsureInputMethodRegistered(bool setDefault) {
   constexpr wchar_t kProfileKey[] =
       L"Control Panel\\International\\User Profile\\zh-Hans-CN";
   constexpr wchar_t kTip[] =
@@ -231,6 +231,32 @@ int Configurator::EnsureInputMethodRegistered() {
     return 1;
 
   DWORD type = 0;
+  // 升级安装链(UnregisterTSF→RegisterTSF)会先删后加用户列表条目,
+  // 重新加入时被系统追加到末尾 —— 默认输入法顺位掉到微软拼音后面,
+  // 任务栏右键菜单随之变成微软的。setDefault(安装器上下文传入)把
+  // 蚌壳设回 1,其余条目顺移;用户手动排序不受日常路径影响
+  if (setDefault) {
+    for (DWORD i = 0;; ++i) {
+      wchar_t name[256] = {0};
+      DWORD name_len = _countof(name);
+      type = 0;
+      DWORD v = 0;
+      DWORD vsz = sizeof(v);
+      if (RegEnumValueW(key, i, name, &name_len, nullptr, &type,
+                        (LPBYTE)&v, &vsz) != ERROR_SUCCESS)
+        break;
+      if (type != REG_DWORD || wcscmp(name, kTip) == 0)
+        continue;
+      ++v;  // 其他输入法顺移,蚌壳腾出 1
+      RegSetValueExW(key, name, 0, REG_DWORD,
+                     (const BYTE*)&v, sizeof(v));
+    }
+    const DWORD one = 1;
+    RegSetValueExW(key, kTip, 0, REG_DWORD, (const BYTE*)&one, sizeof(one));
+    RegCloseKey(key);
+    return 0;
+  }
+
   DWORD size = 0;
   if (RegQueryValueExW(key, kTip, nullptr, &type, nullptr, &size) == ERROR_SUCCESS) {
     RegCloseKey(key);

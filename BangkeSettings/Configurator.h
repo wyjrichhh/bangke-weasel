@@ -25,7 +25,7 @@ class Configurator : public QObject {
   // 把本输入法加进当前用户的输入法列表(/install)。幂等。
   // 机器层面的注册由 MSI 的 RegisterTSF(regsvr32) 做,但那一步不会把它加进用户的列表 ——
   // 而大版本升级是先卸后装,卸载会把用户列表里那条一起带走,于是装完 Win+Space 里没有它。
-  int EnsureInputMethodRegistered();
+  int EnsureInputMethodRegistered(bool setDefault = false);
   // 卸载残留清理：以 MSI SYSTEM 令牌运行，不触碰用户数据目录，故为静态
   static int CleanupResidue();
   // 安装前清掉指向本产品文件的挂起重启删除：否则卸载后未重启就重装，

@@ -111,8 +111,13 @@ int main(int argc, char* argv[]) {
       case Mode::Install:
         // 首部署:先补 AI 接线与模型,再部署使其生效
         configurator.EnsureAiDefaults();
-        // 同时把它加进用户的输入法列表——注册那一步不会做,而升级是先卸后装
-        configurator.EnsureInputMethodRegistered();
+        // 同时把它加进用户的输入法列表——注册那一步不会做,而升级是先卸后装。
+        // 安装器上下文(/install restoredefault)顺带把默认输入法设回蚌壳:
+        // 升级链的先删后加会让顺位掉到微软拼音后面
+        configurator.EnsureInputMethodRegistered(
+            argc > 2 && QString::fromLocal8Bit(argv[2])
+                              .compare(QLatin1String("restoredefault"),
+                                       Qt::CaseInsensitive) == 0);
         ret = configurator.UpdateWorkspace();
         break;
       case Mode::Sync:

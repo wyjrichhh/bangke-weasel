@@ -92,7 +92,7 @@
                   Return="check" Execute="deferred" Impersonate="yes" />
     <!-- 首部署写用户目录，必须以安装用户身份跑，否则落到 systemprofile -->
     <CustomAction Id="FirstDeploy" Directory="INSTALLDIR"
-                  ExeCommand="&quot;[INSTALLDIR]BangkeSettings.exe&quot; /install"
+                  ExeCommand="&quot;[INSTALLDIR]BangkeSettings.exe&quot; /install restoredefault"
                   Return="check" Execute="deferred" Impersonate="yes" />
 
     <!-- 装完即用：以安装用户身份 fire-and-forget 拉起服务（cmd start 避免 CA 等待常驻进程） -->
