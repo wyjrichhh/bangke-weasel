@@ -168,9 +168,6 @@ StyleControlModel::StyleControlModel(QObject* parent)
   addSlider(kLayout, QStringLiteral(u"圆角半径"),
             QStringLiteral("layout/corner_radius"), 0, 30,
             QStringLiteral("9"));
-  addSlider(kLayout, QStringLiteral(u"高亮圆角半径"),
-            QStringLiteral("layout/round_corner"), 0, 30,
-            QStringLiteral("7"));
   addSlider(kLayout, QStringLiteral(u"行距"),
             QStringLiteral("layout/candidate_spacing"), 0, 30,
             QStringLiteral("10"));
@@ -183,7 +180,9 @@ StyleControlModel::StyleControlModel(QObject* parent)
             QStringLiteral("layout/border_width"), 0, 20, QStringLiteral("0"));
 
   const QString kDisplay = QStringLiteral(u"显示");
-  addToggle(kDisplay, QStringLiteral(u"在输入框内显示拼音"),
+  // 开 = 拼音串嵌在应用输入框光标处(面板顶部不显示);
+  // 关 = 拼音串显示在候选面板顶部(旧式)。行为与 mac 相同
+  addToggle(kDisplay, QStringLiteral(u"拼音串嵌入输入框(关闭则显示在候选面板)"),
             QStringLiteral("inline_preedit"), QStringLiteral("1"));
   // 以下为 Windows 引擎支持、mac 设置页没有对应项的补充行
   // (mac 的 inline_candidate/mutual_exclusive/memorize_size/show_paging
