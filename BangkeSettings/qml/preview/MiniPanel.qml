@@ -16,7 +16,17 @@ Item {
   property var colors: ({})
   property var m: ({})
   property real zoom: 1
-  property bool horizontal: m.horizontal === true  // metrics map 由父级传入(非属性绑定,安全)
+  property bool horizontal: m.horizontal === true
+  // 背板灰(浅/深半区):半透明时把「背板→面板→高亮」的叠层直接合成
+  // 为单层不透明色 —— 半透明悬浮会露出叠层边缘(用户实验:alpha<1 时
+  // 显形),mac 的真实 NSPanel 合成无此痕迹
+  property color boardColor: "#C0C0C0"
+
+  function blend(fg, bg, a) {
+    return Qt.rgba(fg.r * a + bg.r * (1 - a),
+                   fg.g * a + bg.g * (1 - a),
+                   fg.b * a + bg.b * (1 - a), 1)
+  }  // metrics map 由父级传入(非属性绑定,安全)
 
   // 样例池:首条高亮并带注释;显示条数 = 每页候选数(与实际一致)
   readonly property var candPool: [
@@ -37,10 +47,22 @@ Item {
 
   function tint(key, fallback) {
     var c = Theme.argb(colors ? colors[key] : undefined, fallback)
-    // 整窗透明语义(同实际候选窗的 ULW):alpha 乘到所有颜色,
-    // 文字与高亮随之变淡 —— 只乘背景会残留灰块
-    if (m.alpha !== undefined)
-      c = Qt.rgba(c.r, c.g, c.b, c.a * m.alpha)
+    // 整窗透明(mac alphaValue):alpha < 1 时不做半透明悬浮,而是与
+    // 背板/面板合成后的不透明色 —— 视觉即 ULW 合成的最终观感,
+    // 且无叠层痕迹
+    if (m.alpha !== undefined && m.alpha < 1) {
+      const panel = Theme.argb(colors ? colors.back_color : undefined,
+                               "#FFFFFF")
+      const panelFlat = blend(panel, boardColor, m.alpha)
+      if (key === "back_color")
+        return panelFlat
+      if (key === "hilited_candidate_back_color" ||
+          key === "hilited_back_color")
+        return blend(c, panelFlat, m.alpha)
+      // 文字/序号/注释:与各自底色合成
+      const under = key.indexOf("hilited") === 0 ? panelFlat : panelFlat
+      return blend(c, under, m.alpha)
+    }
     return c
   }
 

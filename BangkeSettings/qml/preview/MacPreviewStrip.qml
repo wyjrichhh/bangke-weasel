@@ -51,6 +51,7 @@ ColumnLayout {
       id: panelItem
       colors: half.dark ? app.style.previewDark : app.style.previewLight
       m: app.style.previewMetrics
+      boardColor: half.dark ? "#696969" : "#C0C0C0"
       // 等比 fit,且四周留出均匀呼吸(两侧各 28)—— 面板永不顶边铺满,
       // 这是 mac 预览观感的另一半:等比、居中、有留白。
       // zoom 乘进字号与度量(不是 Item.scale,整体缩放会把文本压糊)
