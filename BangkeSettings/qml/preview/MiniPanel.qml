@@ -166,7 +166,9 @@ Item {
     y: zz(mini.preeditH + (mini.preeditH > 0 ? mini.spacing : 0) + mini.marginY) - zz(mini.hilitePadY)
     x: 0
     width: parent.width
-    height: zz(mini.rowH + 2 * mini.hilitePadY)
+    // 与引擎同步:多行首行向下吃掉行距(mac += linespace),高亮块间零空隙
+    height: zz(mini.rowH + 2 * mini.hilitePadY) +
+            (mini.horizontal ? 0 : zz(mini.candSpacing))
     radius: zz(mini.hiliteR)
     color: mini.hiliteColor
   }

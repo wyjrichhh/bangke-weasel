@@ -923,6 +923,13 @@ bool BangkePanel::_DrawCandidates(bool back) {
       }
       rect.InflateRect(DPI_SCALE(m_style.hilite_padding_x),
                        DPI_SCALE(m_style.hilite_padding_y));
+      // mac 的多行高亮向下吃掉整行距(highlightedRect += linespace),
+      // 高亮块之间零空隙;末行不吃(留给面板底边距)。不加的话
+      // 行间露底色,第二行候选叠空隙读成"灰色堆叠"
+      if (m_style.layout_type == UIStyle::LAYOUT_VERTICAL &&
+          m_ctx.cinfo.highlighted + 1 < m_candidateCount) {
+        rect.bottom += DPI_SCALE(m_style.candidate_spacing);
+      }
       _SnapHighlightToPanel(rect, rd);
       _HighlightBack(rect, m_style.hilited_candidate_back_color,
                      markSt ? m_style.hilited_candidate_shadow_color : 0,
