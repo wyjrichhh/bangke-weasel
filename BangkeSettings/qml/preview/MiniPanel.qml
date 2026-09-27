@@ -186,8 +186,10 @@ Item {
   Rectangle {
     id: hilite
     y: zz(mini.preeditH + (mini.preeditH > 0 ? mini.spacing : 0) + mini.marginY) - zz(mini.hilitePadY)
-    x: 0
-    width: parent.width
+    // 多行:整行满铺;单行(mac 同观感):只包住第一个候选词,左右留
+    // margin 边距 —— 引擎 0.4.22+ 已同步(删 HorizontalLayout 拉右)
+    x: mini.horizontal ? zz(mini.marginX) : 0
+    width: mini.horizontal ? zz(mini.rowWidth(0)) : parent.width
     // 与引擎同步:多行首行向下补到下一行文字顶(行距-已扩 padding),
     // 高亮块与下一行零空隙且不盖字;单行不扩
     height: zz(mini.rowH + 2 * mini.hilitePadY) +
@@ -196,9 +198,10 @@ Item {
     radius: zz(mini.hiliteR)
     color: mini.hiliteColor
   }
-  // 下沿两角补直:高亮 Rectangle 的 radius 服务上沿(面板圆角),
-  // 下沿应表现 round_corner(默认 0 直角)
+  // 下沿两角补直(仅多行):多行高亮贴面板顶,上沿用面板圆角、下沿用
+  // round_corner(默认 0 直角)。单行高亮是独立小块,四角全圆(mac 同观感)
   Rectangle {
+    visible: !mini.horizontal
     x: 0
     y: hilite.y + hilite.height - zz(mini.hiliteR)
     width: zz(mini.hiliteR)
@@ -206,6 +209,7 @@ Item {
     color: mini.hiliteColor
   }
   Rectangle {
+    visible: !mini.horizontal
     x: parent.width - zz(mini.hiliteR)
     y: hilite.y + hilite.height - zz(mini.hiliteR)
     width: zz(mini.hiliteR)

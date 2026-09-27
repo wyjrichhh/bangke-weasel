@@ -212,15 +212,9 @@ void HorizontalLayout::DoLayout(CDCHandle dc, PDWR pDWR) {
     width = max(width, _style.min_width);
     height = max(height, _style.min_height);
   }
-  if (candidates_count) {
-    for (auto i = 0; i < candidates_count && i < MAX_CANDIDATES_COUNT; ++i) {
-      // make rightest candidate's rect right the same for better look
-      if ((i < candidates_count - 1 &&
-           row_of_candidate[i] < row_of_candidate[i + 1]) ||
-          (i == candidates_count - 1))
-        _candidateRects[i].right = width - real_margin_x;
-    }
-  }
+  // 上游 weasel 曾把每行最后一个候选的矩形右缘拉到面板边("better
+  // look")。单行布局(含 ai_only 单候选)时这会令唯一/末个候选的高亮
+  // 铺满整条面板 —— mac 单行高亮只包住候选词本身,不再拉
   _highlightRect = _candidateRects[id];
   UpdateStatusIconLayout(&width, &height);
   _contentSize.SetSize(width + offsetX, height + 2 * offsetY);
