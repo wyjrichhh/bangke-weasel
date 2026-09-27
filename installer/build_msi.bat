@@ -8,7 +8,12 @@ if not defined BANGKE_ROOT set BANGKE_ROOT=%CD%
 if not defined VERSION_MAJOR set VERSION_MAJOR=0
 if not defined VERSION_MINOR set VERSION_MINOR=1
 if not defined VERSION_PATCH set VERSION_PATCH=0
-set BANGKE_VERSION=%VERSION_MAJOR%.%VERSION_MINOR%.%VERSION_PATCH%
+rem 4th version field = build timestamp (HHmm): every build gets a
+rem unique MSI version, so a re-pack can never be "same version,
+rem different product" - the upgrade chain always completes and the
+rem TSF registration survives (keep this file ASCII-only).
+for /f "tokens=1-2 delims=:" %%a in ("%TIME: =0%") do set BUILD_STAMP=%%a%%b
+set BANGKE_VERSION=%VERSION_MAJOR%.%VERSION_MINOR%.%VERSION_PATCH%.%BUILD_STAMP%
 
 set WIXEXE=%USERPROFILE%\.dotnet\tools\wix.exe
 if not exist "%WIXEXE%" (

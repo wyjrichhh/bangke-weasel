@@ -2,11 +2,11 @@
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
   <!--
-    ProductCode 固定:每次构建新 GUID 时,同版本号重打包=「同版本但不同产品」,
-    升级链会先卸旧产品(跑 UnregisterTSF 删 TSF 注册)再装新 —— System32 的
-    dll 被占用挂起替换时,重注册环节踩空,用户实测右键菜单/设置入口丢失。
-    固定后:同版本重装=同一产品重装(不触发卸旧);跨版本=原位升级(卸载侧
-    CA 的 REMOVE 条件不成立),两条路径都不再删注册。降级需先卸载(MSI 语义)。
+    ProductCode 保持每次构建自动生成(MajorUpgrade 升级链依赖它)。
+    「同版本号重打包」的注册丢失问题由 build_msi.bat 解决:MSI Version
+    第四段填构建时间戳,任何两个包的版本必然不同,永远走正常升级链。
+    (曾试过固定 ProductCode —— 同 ProductCode 的更高版本直接装会报
+    1638「该产品的另一版本已安装」,把正常升级堵死,已撤销。)
   -->
   <Package Name="蚌壳拼音"
            Codepage="65001"
@@ -16,7 +16,6 @@
            Scope="perMachine"
            InstallerVersion="500"
            Compressed="yes"
-           ProductCode="7A3E2C15-8B4D-4F6A-9E1B-2C5D8F0A4B7E"
            UpgradeCode="8F1D4B33-9C2A-4E6D-B0F7-3A5C8E21D940">
 
     <SummaryInformation Description="蚌壳拼音输入法 $(var.Version)" />
