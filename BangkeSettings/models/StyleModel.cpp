@@ -167,7 +167,7 @@ StyleControlModel::StyleControlModel(QObject* parent)
            QStringLiteral("false"));
   addSlider(kLayout, QStringLiteral(u"圆角半径"),
             QStringLiteral("layout/corner_radius"), 0, 30,
-            QStringLiteral("9"));
+            QStringLiteral("9"))
   addSlider(kLayout, QStringLiteral(u"行距"),
             QStringLiteral("layout/candidate_spacing"), 0, 30,
             QStringLiteral("10"));

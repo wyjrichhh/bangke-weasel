@@ -169,7 +169,7 @@ Item {
   Rectangle {
     id: panelFace
     anchors.fill: parent
-    radius: zz(m.cornerRadius !== undefined ? m.cornerRadius : 9)
+    radius: zz(panelR)
     color: mini.tint("back_color", "#FFFFFF")
     // 引擎只在 border_width > 0 时画边框(border_color 不透明),
     // 预览同判 —— 不额外加描边
@@ -182,9 +182,16 @@ Item {
   // (_SnapHighlightToPanel):贴面板顶的那沿用面板半径(首行=上沿圆),
   // 另一沿用 round_corner(默认 0=直角)→ 首行高亮「上圆下直」
   readonly property real hilitePadY: m.hilitePaddingY !== undefined ? m.hilitePaddingY : 5
-  readonly property real hiliteR: Math.max(m.hiliteRadius !== undefined ? m.hiliteRadius : 0,
-                                           m.cornerRadius !== undefined ? m.cornerRadius : 9)
+  // 高亮半径分态:贴面板顶/底(无拼音行、首末行)才用面板圆角(snap 语义);
+  // 拼音行下方的第一候选不贴边 → 用 round_corner(出厂 0=直角,mac 同观感)
+  readonly property real hiliteR: (preeditH > 0)
+      ? (m.hiliteRadius !== undefined ? m.hiliteRadius : 0)
+      : Math.max(m.hiliteRadius !== undefined ? m.hiliteRadius : 0,
+                 panelR)
   readonly property color hiliteColor: mini.tint("hilited_candidate_back_color", "#FFB3D7FF")
+  // 面板圆角与钳后边距联动:margin 钳 5 时圆角不超过 5+2,序号才不被弧线吃掉
+  readonly property real panelR: Math.min(
+      m.cornerRadius !== undefined ? m.cornerRadius : 9, marginX + 2)
 
   Rectangle {
     id: hilite
