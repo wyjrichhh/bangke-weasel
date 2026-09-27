@@ -230,9 +230,11 @@ void bangke::StandardLayout::_PrepareRoundInfo(CDCHandle& dc) {
            },
            // inline_preedit
            {
-               {true, true, false, false},    // FIRST_CAND
+               // FIRST/末词/唯一 全四角圆:单行高亮是包词的独立小块
+               // (mac 实拍同观感),只圆左侧会在词块右缘形成直角割裂
+               {true, true, true, true},      // FIRST_CAND
                {false, false, false, false},  // MID_CAND
-               {false, false, true, true},    // LAST_CAND
+               {true, true, true, true},      // LAST_CAND
                {true, true, true, true},      // ONLY_CAND
            }},
           // LAYOUT_VERTICAL_TEXT
