@@ -80,7 +80,8 @@ Item {
   readonly property real fontPoint: m.fontPoint !== undefined ? m.fontPoint : 16
   readonly property real labelPoint: m.labelPoint !== undefined ? m.labelPoint : fontPoint
   readonly property real commentPoint: m.commentPoint !== undefined ? m.commentPoint : fontPoint
-  readonly property real marginX: m.marginX !== undefined ? m.marginX : 9
+  readonly property real marginX: Math.max(
+      m.marginX !== undefined ? m.marginX : 9, panelR - 2)
   readonly property real marginY: m.marginY !== undefined ? m.marginY : 9
   readonly property real candSpacing: m.candidateSpacing !== undefined ? m.candidateSpacing : 5
   readonly property real spacing: m.spacing !== undefined ? m.spacing : 8
@@ -189,9 +190,9 @@ Item {
       : Math.max(m.hiliteRadius !== undefined ? m.hiliteRadius : 0,
                  panelR)
   readonly property color hiliteColor: mini.tint("hilited_candidate_back_color", "#FFB3D7FF")
-  // 面板圆角与钳后边距联动:margin 钳 5 时圆角不超过 5+2,序号才不被弧线吃掉
-  readonly property real panelR: Math.min(
-      m.cornerRadius !== undefined ? m.cornerRadius : 9, marginX + 2)
+  // 面板圆角全程跟配置(滑杆全程生效);边距随圆角放大(mac edgeInset
+  // = corner+border 语义),序号永远在弧线之后
+  readonly property real panelR: m.cornerRadius !== undefined ? m.cornerRadius : 9
 
   Rectangle {
     id: hilite

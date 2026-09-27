@@ -72,10 +72,9 @@ style:
     hilite_padding: 0
     hilite_padding_x: 9
     hilite_padding_y: 5
-    # 高亮独立圆角:0=直角。贴面板边时引擎自动换面板圆角(snap);
-    # 拼音行下方的第一候选不贴边 → 直角(mac 同观感,用户的
-    # hilited_corner_radius 也是 0)
-    round_corner: 0
+    # 高亮圆角。贴面板边的角由引擎换成面板圆角(snap);拼音行下方的
+    # 第一候选直角(StandardLayout 圆角表 VERTICAL+非内联+首行全直角)
+    round_corner: 7
     # mac 的 7 是 pt(≈9.3 逻辑像素),weasel 单位是像素,直译会小 1/3 显「方」
     corner_radius: 9
     # mac NSPanel 自带系统窗影;Windows 侧用小半径软影近似
