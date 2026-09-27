@@ -928,7 +928,9 @@ bool BangkePanel::_DrawCandidates(bool back) {
       // 行间露底色,第二行候选叠空隙读成"灰色堆叠"
       if (m_style.layout_type == UIStyle::LAYOUT_VERTICAL &&
           m_ctx.cinfo.highlighted + 1 < m_candidateCount) {
-        rect.bottom += DPI_SCALE(m_style.candidate_spacing);
+        // 扩到下一行文字顶(净空隙 = 行距 - 已扩的 padding),零空隙且不盖字
+        rect.bottom += DPI_SCALE(m_style.candidate_spacing) -
+                       DPI_SCALE(m_style.hilite_padding_y);
       }
       _SnapHighlightToPanel(rect, rd);
       _HighlightBack(rect, m_style.hilited_candidate_back_color,

@@ -166,9 +166,11 @@ Item {
     y: zz(mini.preeditH + (mini.preeditH > 0 ? mini.spacing : 0) + mini.marginY) - zz(mini.hilitePadY)
     x: 0
     width: parent.width
-    // 与引擎同步:多行首行向下吃掉行距(mac += linespace),高亮块间零空隙
+    // 与引擎同步:多行首行向下补到下一行文字顶(行距-已扩 padding),
+    // 高亮块与下一行零空隙且不盖字;单行不扩
     height: zz(mini.rowH + 2 * mini.hilitePadY) +
-            (mini.horizontal ? 0 : zz(mini.candSpacing))
+            (mini.horizontal || mini.cands.length < 2
+                 ? 0 : zz(mini.candSpacing - mini.hilitePadY))
     radius: zz(mini.hiliteR)
     color: mini.hiliteColor
   }
