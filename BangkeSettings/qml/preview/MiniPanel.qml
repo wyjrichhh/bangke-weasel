@@ -77,8 +77,8 @@ Item {
   readonly property real fontPoint: m.fontPoint !== undefined ? m.fontPoint : 16
   readonly property real labelPoint: m.labelPoint !== undefined ? m.labelPoint : fontPoint
   readonly property real commentPoint: m.commentPoint !== undefined ? m.commentPoint : fontPoint
-  readonly property real marginX: m.marginX !== undefined ? m.marginX : 5
-  readonly property real marginY: m.marginY !== undefined ? m.marginY : 5
+  readonly property real marginX: m.marginX !== undefined ? m.marginX : 9
+  readonly property real marginY: m.marginY !== undefined ? m.marginY : 9
   readonly property real candSpacing: m.candidateSpacing !== undefined ? m.candidateSpacing : 5
   readonly property real spacing: m.spacing !== undefined ? m.spacing : 8
   readonly property real hiliteSpacing: m.hiliteSpacing !== undefined ? m.hiliteSpacing : 5

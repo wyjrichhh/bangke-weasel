@@ -62,13 +62,15 @@ style:
     # 面板上下缘,_SnapHighlightToPanel 贴边(圆角取面板半径)。
     # fixup 使 spacing/candidate_spacing = max(现值, padding_y*2)=10,
     # 多行时高亮块纵向相连(mac 实拍同观感:行间无缝、无灰底露出)
-    margin_x: 0
-    margin_y: 5
+    # 内容边距 ≥ 圆角半径(mac carveInset = radius+border):否则
+    # 末行序号/首尾行文字被面板圆角弧线挤出面板边缘
+    margin_x: 9
+    margin_y: 9
     spacing: 10
     candidate_spacing: 10
     hilite_spacing: 5
     hilite_padding: 0
-    hilite_padding_x: 5
+    hilite_padding_x: 9
     hilite_padding_y: 5
     # 高亮圆角与面板一致(mac 实拍单行/多行高亮均 6-8px 圆角,尽管
     # hilited_corner_radius 配 0 —— 观感为准)
