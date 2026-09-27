@@ -634,5 +634,8 @@ bool StyleModel::save() {
   activeScheme_ = scheme;
   activeFontSize_ = fontSize_;
   activeHorizontal_ = horizontal;
+  // 预览立即跟随:metrics 里的 inlinePreedit/间距/圆角等读自内存表,
+  // 不重算的话预览停在旧值 —— 表现为「实际生效了,预览没变」
+  updatePreview();
   return true;
 }
