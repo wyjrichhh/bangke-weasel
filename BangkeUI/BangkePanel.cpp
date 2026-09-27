@@ -707,11 +707,17 @@ void BangkePanel::_HighlightBack(const CRect& rc,
 void BangkePanel::_SnapHighlightToPanel(CRect& rect, IsToRoundStruct& rd) {
   const CRect bg = m_layout->GetContentRect();
   bool atWindowEdge = false;
-  if (rd.IsTopLeftNeedToRound && rd.IsBottomLeftNeedToRound) {
+  // 水平贴边满铺只属于多行(mac 单行高亮只包住第一个候选词,
+  // 左右各留边距);单行跳过水平 snap,高亮保持第一候选文字矩形+padding
+  const bool horizontalLayout =
+      m_style.layout_type == UIStyle::LAYOUT_HORIZONTAL;
+  if (!horizontalLayout && rd.IsTopLeftNeedToRound &&
+      rd.IsBottomLeftNeedToRound) {
     rect.left = bg.left;
     atWindowEdge = true;
   }
-  if (rd.IsTopRightNeedToRound && rd.IsBottomRightNeedToRound) {
+  if (!horizontalLayout && rd.IsTopRightNeedToRound &&
+      rd.IsBottomRightNeedToRound) {
     rect.right = bg.right;
     atWindowEdge = true;
   }
