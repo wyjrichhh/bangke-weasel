@@ -41,6 +41,9 @@ Item {
   ]
   readonly property int visibleCount: {
     var ps = m.pageSize !== undefined ? m.pageSize : 5
+    // 单行横排限 2 个:5 词横排过宽,预览 zoom 被压到字号看不清
+    if (m.horizontal === true)
+      return Math.min(2, candPool.length)
     return Math.max(1, Math.min(candPool.length, ps))
   }
   readonly property var cands: candPool.slice(0, visibleCount)

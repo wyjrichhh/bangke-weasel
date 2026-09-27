@@ -532,12 +532,15 @@ void StyleModel::updatePreview() {
   const bool horizontal = layout_ == QStringLiteral("horizontal");
   previewHorizontal_ = horizontal;
   // margin 经引擎 fixup = max(|margin|, hilite_padding),预览按同式
-  const int marginX = std::max(
-      styleControls_->intValue(QStringLiteral("layout/margin_x"), 0),
-      styleControls_->intValue(QStringLiteral("layout/hilite_padding_x"), 0));
-  const int marginY = std::max(
-      styleControls_->intValue(QStringLiteral("layout/margin_y"), 0),
-      styleControls_->intValue(QStringLiteral("layout/hilite_padding_y"), 0));
+  // 预览的视觉钳:实机 margin 已提到 9(修序号出界)、行距 fixup 到 10,
+  // 直接照搬会让预览面板比 mac 松散一截(mac edgeInset=5/lineSpacing=5)。
+  // 预览是挑配色与看风格的画板,按 mac 观感钳到 5
+  const int marginX = std::min(
+      5, std::max(styleControls_->intValue(QStringLiteral("layout/margin_x"), 0),
+                  styleControls_->intValue(QStringLiteral("layout/hilite_padding_x"), 0)));
+  const int marginY = std::min(
+      5, std::max(styleControls_->intValue(QStringLiteral("layout/margin_y"), 0),
+                  styleControls_->intValue(QStringLiteral("layout/hilite_padding_y"), 0)));
   // 候选窗字体:取 font_face 第一族;权重后缀与 DirectWriteResources 同解,
   // QML 侧把名字映到 Font.weight
   const QString faceRaw =
@@ -571,9 +574,9 @@ void StyleModel::updatePreview() {
        settings_.GetStyleInt("layout/border_width", 0)},
       {QStringLiteral("pageSize"), pageSize_},
       {QStringLiteral("candidateSpacing"),
-       styleControls_->intValue(QStringLiteral("layout/candidate_spacing"), 10)},
+       std::min(6, styleControls_->intValue(QStringLiteral("layout/candidate_spacing"), 10))},
       {QStringLiteral("spacing"),
-       styleControls_->intValue(QStringLiteral("layout/spacing"), 10)},
+       std::min(8, styleControls_->intValue(QStringLiteral("layout/spacing"), 10))},
       {QStringLiteral("hiliteSpacing"),
        settings_.GetStyleInt("layout/hilite_spacing", 5)},
       {QStringLiteral("fontPoint"), fontSize_},
