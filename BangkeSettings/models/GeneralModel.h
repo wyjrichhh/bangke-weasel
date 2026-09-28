@@ -19,9 +19,9 @@ class GeneralModel : public QObject {
   Q_PROPERTY(QString shiftL READ shiftL WRITE setShiftL NOTIFY changed)
   Q_PROPERTY(QString shiftR READ shiftR WRITE setShiftR NOTIFY changed)
   Q_PROPERTY(bool commentHints READ commentHints WRITE setCommentHints NOTIFY changed)
-  // never / appropriate / always:appropriate 与 always 在 Windows 引擎同效
+  // never / appropriate / always:写 false / [schema] / true(引擎的顶层
+  // show_notifications 支持布尔与事件名列表两种形态)
   Q_PROPERTY(QString notificationsMode READ notificationsMode WRITE setNotificationsMode NOTIFY changed)
-  Q_PROPERTY(bool trayIcon READ trayIcon WRITE setTrayIcon NOTIFY changed)
   // 两个 Shift 下拉的可选项,label 用于显示,value 是写进配置的键值
   Q_PROPERTY(QVariantList shiftActions READ shiftActions CONSTANT)
   Q_PROPERTY(QVariantList notificationOptions READ notificationOptions CONSTANT)
@@ -46,9 +46,6 @@ class GeneralModel : public QObject {
     notificationsMode_ = value;
     emit changed();
   }
-
-  bool trayIcon() const { return trayIcon_; }
-  void setTrayIcon(bool value) { trayIcon_ = value; emit changed(); }
 
   QVariantList shiftActions() const;
   QVariantList notificationOptions() const;
@@ -75,7 +72,6 @@ class GeneralModel : public QObject {
   QString shiftR_ = QStringLiteral("commit_code");
   bool commentHints_ = true;
   QString notificationsMode_ = QStringLiteral("never");
-  bool trayIcon_ = false;
 
   // 载入时的原值(Shift 空串 = custom yaml 无此键);保存只写有变化的键
   int initPs_ = 0;
@@ -83,7 +79,6 @@ class GeneralModel : public QObject {
   QString initShiftR_;
   bool initCommentHints_ = false;
   QString initNotifications_ = QStringLiteral("never");
-  bool initTrayIcon_ = false;
   // 载过值才允许保存：init* 都是载入时记下的,没载过就与当前值不等,
   // 保存会把默认值写进配置(见 StyleModel::save 同类事故)
   bool loaded_ = false;

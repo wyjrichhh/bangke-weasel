@@ -137,11 +137,13 @@ void AppController::saveAndDeploy() {
     return;
   }
 
-  // 分级生效(对齐 mac 的 needsFullDeployment):方案列表与 AI 配置写进
-  // schema 级的 custom yaml(方案编译、ai_only 的 prism 扩展),需要全量
-  // 部署;样式/行为类改动服务端重读配置即可,不做词典编译与配置重摊。
+  // 分级生效(对齐 mac 的 needsFullDeployment):写进 default.custom.yaml 的
+  // (行为页的每页候选数、左右 Shift)和写进 schema 级 custom yaml 的
+  // (方案列表、AI 配置)都要全量部署 —— 前者的补丁只有部署才会摊平进
+  // build/default.yaml,而轻量路径只摊 weasel.yaml,引擎读到的仍是出厂值
+  // (Shift 选什么都一样就是这么来的)。样式类改动服务端重读即可。
   // 两类都在后台线程执行 —— 部署再久窗口也不卡
-  const bool fullDeploy = switcherChanged || aiChanged;
+  const bool fullDeploy = switcherChanged || aiChanged || generalChanged;
   qWarning("BKSAVE g=%d s=%d a=%d w=%d full=%d", generalChanged,
            styleChanged, aiChanged, switcherChanged, fullDeploy);
   setSaving(true);

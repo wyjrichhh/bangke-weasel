@@ -21,6 +21,45 @@ const struct {
     {"inline_ascii", "内嵌英文"}, {"clear", "清除"}, {"noop", "不处理"},
 };
 
+// 通知三态。引擎的闸门是顶层键 show_notifications,两种形态:布尔(全开/
+// 全关),或事件名列表(只提示列表内的事件,见 BangkeRime::_ShowMessage)。
+// mac 的 never/appropriate/always 正好落成 false / [schema] / true。
+QString ReadNotifications(RimeLeversApi* api, RimeCustomSettings* settings) {
+  RimeConfig config = {0};
+  if (!api->settings_get_config(settings, &config))
+    return QStringLiteral("never");
+  RimeApi* rime = rime_get_api();
+  Bool on = False;
+  if (rime->config_get_bool(&config, "show_notifications", &on))
+    return on != False ? QStringLiteral("always") : QStringLiteral("never");
+  RimeConfigIterator iter = {0};
+  if (rime->config_begin_list(&iter, &config, "show_notifications")) {
+    rime->config_end(&iter);
+    return QStringLiteral("appropriate");
+  }
+  return QStringLiteral("never");
+}
+
+// 列表形态只能经 customize_item 打补丁(levers 的 "patch a list or a map"):
+// 造一个根为列表的 config 交给它。写不进去就退回布尔 —— 开关本身不能丢
+void WriteNotifications(RimeLeversApi* api,
+                        RimeCustomSettings* settings,
+                        const QString& mode) {
+  if (mode == QStringLiteral("appropriate") && api->customize_item) {
+    RimeConfig list = {0};
+    RimeApi* rime = rime_get_api();
+    const bool ok = rime->config_init(&list) &&
+                    rime->config_load_string(&list, "- schema") &&
+                    api->customize_item(settings, "show_notifications", &list);
+    if (list.ptr)
+      rime->config_close(&list);
+    if (ok)
+      return;
+  }
+  api->customize_bool(settings, "show_notifications",
+                      mode == QStringLiteral("always") ? True : False);
+}
+
 }  // namespace
 
 GeneralModel::GeneralModel(QObject* parent) : QObject(parent) {
@@ -72,14 +111,8 @@ void GeneralModel::load() {
   commentHints_ = cfp >= 16;
   initCommentHints_ = commentHints_;
 
-  // 通知:引擎只有布尔;true 显示为「适当时候」(mac 语义)
-  notificationsMode_ = style_.GetStyleBool("show_notifications", false)
-                           ? QStringLiteral("appropriate")
-                           : QStringLiteral("never");
+  notificationsMode_ = ReadNotifications(api_, bangkeStyle_);
   initNotifications_ = notificationsMode_;
-
-  trayIcon_ = style_.GetStyleBool("display_tray_icon", false);
-  initTrayIcon_ = trayIcon_;
 
   // settings_get_config 只含 custom 补丁,不含合并后的共享默认;
   // 空 = 未打补丁,保持当前值(与下拉框"找不到就不动"一致)
@@ -106,7 +139,6 @@ void GeneralModel::resetDefaults() {
   shiftR_ = QStringLiteral("commit_code");
   commentHints_ = true;
   notificationsMode_ = QStringLiteral("never");
-  trayIcon_ = false;
   emit changed();
 }
 
@@ -138,25 +170,20 @@ bool GeneralModel::save() {
     changed = true;
   }
 
-  // weasel 侧(注释/通知/托盘):同样有变化才写;先 reload 防 StyleModel 旧树覆写
+  // weasel 侧(注释/通知):同样有变化才写;先 reload 防 StyleModel 旧树覆写
   const bool hints = commentHints_;
-  const bool notify = notificationsMode_ != QStringLiteral("never");
-  const bool tray = trayIcon_;
-  if (hints != initCommentHints_ || notify != (initNotifications_ != "never") ||
-      tray != initTrayIcon_) {
+  const bool notify = notificationsMode_ != initNotifications_;
+  if (hints != initCommentHints_ || notify) {
     api_->load_settings(bangkeStyle_);
     if (hints != initCommentHints_)
       api_->customize_int(bangkeStyle_, "style/comment_font_point",
                           hints ? 16 : 0);
-    if (notify != (initNotifications_ != QStringLiteral("never")))
-      api_->customize_bool(bangkeStyle_, "show_notifications", notify);
-    if (tray != initTrayIcon_)
-      api_->customize_bool(bangkeStyle_, "style/display_tray_icon", tray);
+    if (notify)
+      WriteNotifications(api_, bangkeStyle_, notificationsMode_);
     if (!api_->save_settings(bangkeStyle_))
       return false;
     initCommentHints_ = hints;
     initNotifications_ = notificationsMode_;
-    initTrayIcon_ = tray;
     changed = true;
   }
   return changed;

@@ -2,8 +2,9 @@ import QtQuick
 import QtQuick.Layouts
 import Bangke.Pages
 
-// 行为页(mac BehaviorSettingsPage):mac 的「菜单栏」段在 Windows 映射为
-// 托盘与通知(Windows 没有菜单栏,托盘图标是等价入口);「输入」段照搬;
+// 行为页(mac BehaviorSettingsPage):mac 的「菜单栏」段在 Windows 只留通知 ——
+// 语言栏(托盘)那一项是打开设置页的入口,不能做成开关(见 LanguageBar.cpp);
+// 「输入」段照搬;
 // 「拼音注释」是 Windows 特有保留(mac 无此开关,注释恒随方案)。
 // mac 的「键盘布局」与「组合键时长」是引擎不认的 mac 专有键,不设。
 PageScroll {
@@ -12,18 +13,9 @@ PageScroll {
     Layout.fillWidth: true
     title: "菜单栏"
 
-    ToggleRow {
-      Layout.fillWidth: true
-      showDivider: false
-      label: "显示托盘图标"
-      value: app.general.trayIcon
-      onEdited: function (v) {
-        app.general.trayIcon = v
-      }
-    }
-
     ComboRow {
       Layout.fillWidth: true
+      showDivider: false
       label: "通知"
       fieldWidth: 130
       options: app.general.notificationOptions
