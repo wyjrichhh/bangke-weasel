@@ -1616,8 +1616,6 @@ static void _UpdateUIStyle(RimeConfig* config, UI* ui, bool initialize) {
                UIStyle::LAYOUT_HORIZONTAL, UIStyle::LAYOUT_VERTICAL);
   _RimeGetBool(config, "style/paging_on_scroll", initialize,
                style.paging_on_scroll);
-  _RimeGetBool(config, "style/click_to_capture", initialize,
-               style.click_to_capture, true, false);
   _RimeGetBool(config, "style/vertical_text", false, style.layout_type,
                UIStyle::LAYOUT_VERTICAL_TEXT, style.layout_type);
   _RimeGetBool(config, "style/vertical_text_left_to_right", false,

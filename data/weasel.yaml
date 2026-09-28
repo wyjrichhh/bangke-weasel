@@ -32,11 +32,13 @@ style:
   # 整窗不透明度(mac style/alpha),乘到面板各背景色
   alpha: 1.0
   candidate_abbreviate_length: 0
-  click_to_capture: false
   horizontal: false
   fullscreen: false
   inline_preedit: true
   preedit_type: composition
+  # 死键:引擎读进 UIStyle,但没人消费。设置页的开关已撤掉 —— 曾把它接到
+  # 语言栏项的显隐上,而 TSF 初始化时样式还没到、该字段是默认 false,
+  # 图标一上来就被摘掉,用户再也打不开设置页(详见 BangkeTSF/LanguageBar.cpp)
   display_tray_icon: false
   label_format: "%s."
   mark_text: ""

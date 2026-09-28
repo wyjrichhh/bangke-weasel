@@ -224,6 +224,9 @@ struct UIStyle {
   bool ascii_tip_follow_cursor;
   bool paging_on_scroll;
   bool enhanced_position;
+  // 已废弃(原 style/click_to_capture:点击截图到剪贴板)。字段与序列化留着
+  // 不动 —— 换包时旧客户端 dll 可能还活在别的进程里,删字段会让新旧两端的
+  // UIStyle 布局错位
   bool click_to_capture;
   HoverType hover_type;
   AntiAliasMode antialias_mode;
