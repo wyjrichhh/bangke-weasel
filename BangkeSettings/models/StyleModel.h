@@ -46,8 +46,13 @@ class StyleControlModel : public QAbstractListModel {
   Qt::ItemFlags flags(const QModelIndex& index) const override;
   QHash<int, QByteArray> roleNames() const override;
 
-  // 读 = 补丁 ⊕ 共享默认,补丁与共享都没有就用表里的 fallback
-  void load(UIStyleSettings& settings);
+  // 读 = 补丁 ⊕ 共享默认,补丁与共享都没有就用表里的 fallback。
+  // horizontal 决定间距类的下界(引擎按排列方向钳不同的 padding)
+  void load(UIStyleSettings& settings, bool horizontal);
+  // 间距滑杆下界:引擎的 fixup 会把间距抬到 hilite_padding 的两倍,比这更小
+  // 的值拖了没反应。下界随排列方向变(单行钳 padding_x、多行钳 padding_y)
+  void setSpacingFloors(bool horizontal);
+  int spacingFloor(const QString& key, bool horizontal) const;
   // 只写变了的,返回是否有改动
   bool save(UIStyleSettings& settings);
   // 草稿回到出厂值(仍需 save 才落盘;init 快照不动)
@@ -78,6 +83,9 @@ class StyleControlModel : public QAbstractListModel {
     double lo = 0;
     double hi = 0;
     double step = 1;
+    // 界面显示值与配置值相反(alpha 存的是不透明度,界面显示透明度):
+    // 载入取反、保存取反,fallback/factory 也各按各自空间存
+    bool invert = false;
     // 载入取不到值时用的兜底;出厂值单独一份,恢复默认用
     QString fallback;
     QString factory;
@@ -86,6 +94,11 @@ class StyleControlModel : public QAbstractListModel {
   static QString asText(const Row& row);
 
   std::vector<Row> rows_;
+  // 间距滑杆的下界入参(layout/hilite_padding_*),load 时读一次
+  int spacingPadX_ = 0;
+  int spacingPadY_ = 0;
+  // 最近一次的排列方向:resetDefaults 也要按下界收紧出厂值
+  bool spacingHorizontal_ = false;
 };
 
 // 外观页(对齐 mac AppearanceSettingsPage):颜色(配色/深色配色/不透明度)

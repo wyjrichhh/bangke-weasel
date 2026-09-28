@@ -87,10 +87,13 @@ StyleControlModel::StyleControlModel(QObject* parent)
     rows_.push_back(r);
   };
   // 滑杆(kind=slider)与浮点滑杆(kind=dslider);factory 同时是兜底值
+  // invert:界面显示值与配置值相反(如 alpha 存不透明度、界面显示透明度),
+  // 传进来的 factory 是界面空间的出厂值,配置空间的兜底由它反推
   const auto addSlider = [this](const QString& section, const QString& label,
                                 const QString& key, double lo, double hi,
                                 const QString& factory, double step = 1,
-                                const QString& helper = QString()) {
+                                const QString& helper = QString(),
+                                bool invert = false) {
     Row r;
     r.section = section;
     r.label = label;
@@ -101,7 +104,9 @@ StyleControlModel::StyleControlModel(QObject* parent)
     r.lo = lo;
     r.hi = hi;
     r.step = step;
-    r.fallback = factory;
+    r.invert = invert;
+    r.fallback = invert ? QString::number(1.0 - factory.toDouble(), 'f', 2)
+                        : factory;
     r.factory = factory;
     r.value = factory;
     rows_.push_back(r);
@@ -147,8 +152,9 @@ StyleControlModel::StyleControlModel(QObject* parent)
   addCombo(kColor, QStringLiteral(u"深色配色方案"),
            QStringLiteral("color_scheme_dark"), QVariantList(), QString(),
            QStringLiteral(u"系统切到深色时改用它"));
-  addSlider(kColor, QStringLiteral(u"背景不透明度"),
-            QStringLiteral("alpha"), 0, 1, QStringLiteral("1.00"), 0.05);
+  addSlider(kColor, QStringLiteral(u"背景透明度"),
+            QStringLiteral("alpha"), 0, 1, QStringLiteral("0.00"), 0.05,
+            QStringLiteral(u"1 = 全透明,0 = 不透明"), /*invert=*/true);
 
   const QString kFont = QStringLiteral(u"字体");
   // 字体名从机器上装的字体里挑。首项是空值,与配置语义一致(空 = 跟随系统)
@@ -187,14 +193,18 @@ StyleControlModel::StyleControlModel(QObject* parent)
   // 以下为 Windows 引擎支持、mac 设置页没有对应项的补充行
   // (mac 的 inline_candidate/mutual_exclusive/memorize_size/show_paging
   //  引擎不认,不设)。出厂值 = 引擎的 fallback 默认
-  addToggle(kDisplay, QStringLiteral(u"候选窗跟随光标"),
-            QStringLiteral("enhanced_position"), QStringLiteral("1"));
-  addToggle(kDisplay, QStringLiteral(u"英文提示跟随光标"),
-            QStringLiteral("ascii_tip_follow_cursor"), QStringLiteral("0"));
+  // 这一项是给「候选窗乱飞」的应用兜底的(它们上报的插入点跑到窗口外了),
+  // 正常应用里开关没区别 —— 名字与说明都照这个说,别写成通用行为
+  addToggle(kDisplay, QStringLiteral(u"候选窗位置兜底"),
+            QStringLiteral("enhanced_position"), QStringLiteral("1"),
+            QStringLiteral(u"部分应用上报的插入点位置不对(候选窗会飞),"
+                           u"开启时改用光标位置;正常应用无影响"));
+  // 只影响中/英提示气泡的位置,而且跟的是鼠标指针、不是输入光标
+  addToggle(kDisplay, QStringLiteral(u"中/英提示跟随鼠标"),
+            QStringLiteral("ascii_tip_follow_cursor"), QStringLiteral("0"),
+            QStringLiteral(u"开启时中/英提示浮在鼠标指针旁,关闭时跟着输入光标"));
   addToggle(kDisplay, QStringLiteral(u"滚轮翻页"),
             QStringLiteral("paging_on_scroll"), QStringLiteral("0"));
-  addToggle(kDisplay, QStringLiteral(u"点击候选窗捕获"),
-            QStringLiteral("click_to_capture"), QStringLiteral("0"));
   addCombo(kDisplay, QStringLiteral(u"编码显示方式"),
            QStringLiteral("preedit_type"),
            {option(QStringLiteral(u"只显示已选部分"), QStringLiteral("composition")),
@@ -290,14 +300,43 @@ QString StyleControlModel::asText(const Row& row) {
   return row.value.toString();
 }
 
-void StyleControlModel::load(UIStyleSettings& settings) {
+// 间距键的下界 = 引擎 fixup 抬到的那个值(见 BangkeRime 的 fix padding and
+// spacing):单行钳 hilite_padding_x、其余钳 hilite_padding_y。非间距键返回 0
+int StyleControlModel::spacingFloor(const QString& key, bool horizontal) const {
+  if (key == QStringLiteral("layout/spacing"))
+    return spacingPadY_ * 2;
+  if (key == QStringLiteral("layout/candidate_spacing"))
+    return (horizontal ? spacingPadX_ : spacingPadY_) * 2;
+  return 0;
+}
+
+void StyleControlModel::setSpacingFloors(bool horizontal) {
+  spacingHorizontal_ = horizontal;
+  for (int i = 0; i < (int)rows_.size(); ++i) {
+    const int floor = spacingFloor(rows_[i].key, horizontal);
+    if (floor <= 0 || rows_[i].lo == floor)
+      continue;
+    rows_[i].lo = floor;
+    const QModelIndex idx = index(i, 0);
+    emit dataChanged(idx, idx, {MinRole});
+  }
+}
+
+void StyleControlModel::load(UIStyleSettings& settings, bool horizontal) {
+  spacingPadX_ = settings.GetStyleInt(
+      "layout/hilite_padding_x",
+      settings.GetStyleInt("layout/hilite_padding", 0));
+  spacingPadY_ = settings.GetStyleInt(
+      "layout/hilite_padding_y",
+      settings.GetStyleInt("layout/hilite_padding", 0));
   for (auto& r : rows_) {
     const std::string key = r.key.toStdString();
     const std::string fallback = r.fallback.toStdString();
     if (r.kind == QStringLiteral("toggle")) {
       r.value = settings.GetStyleBool(key, r.fallback == QStringLiteral("1"));
     } else if (r.kind == QStringLiteral("dslider")) {
-      r.value = settings.GetStyleDouble(key, r.fallback.toDouble());
+      const double raw = settings.GetStyleDouble(key, r.fallback.toDouble());
+      r.value = r.invert ? 1.0 - raw : raw;
     } else if (r.kind == QStringLiteral("slider")) {
       r.value = settings.GetStyleInt(key, r.fallback.toInt());
     } else if (r.kind == QStringLiteral("edit")) {
@@ -316,8 +355,15 @@ void StyleControlModel::load(UIStyleSettings& settings) {
         r.value = r.options.isEmpty() ? QString()
                                       : valueOf(r.options.first().toMap());
     }
+    // 间距低于下界时引擎会把它抬到 lof,配置里那个更小的值其实没生效 ——
+    // 草稿直接取下界,显示的就是实际在用的值(init 同值,不会因此写盘)
+    const int floor = spacingFloor(r.key, horizontal);
+    if (floor > 0 && r.kind == QStringLiteral("slider") &&
+        r.value.toInt() < floor)
+      r.value = floor;
     r.init = asText(r);
   }
+  setSpacingFloors(horizontal);
   if (!rows_.empty())
     emit dataChanged(index(0), index((int)rows_.size() - 1));
 }
@@ -332,7 +378,8 @@ bool StyleControlModel::save(UIStyleSettings& settings) {
     if (r.kind == QStringLiteral("toggle"))
       settings.SetStyleBool(key, r.value.toBool());
     else if (r.kind == QStringLiteral("dslider"))
-      settings.SetStyleDouble(key, r.value.toDouble());
+      settings.SetStyleDouble(
+          key, r.invert ? 1.0 - r.value.toDouble() : r.value.toDouble());
     else if (r.kind == QStringLiteral("slider"))
       settings.SetStyleInt(key, r.value.toInt());
     else
@@ -353,6 +400,12 @@ void StyleControlModel::resetDefaults() {
       r.value = r.factory.toInt();
     else
       r.value = r.factory;
+    // 出厂行距/预编辑间距也在引擎的下界之内(单行的下界更紧),
+    // 恢复默认不能把值放回死区
+    const int floor = spacingFloor(r.key, spacingHorizontal_);
+    if (floor > 0 && r.kind == QStringLiteral("slider") &&
+        r.value.toInt() < floor)
+      r.value = floor;
   }
   if (!rows_.empty())
     emit dataChanged(index(0), index((int)rows_.size() - 1));
@@ -440,6 +493,8 @@ void StyleModel::setLayout(const QString& value) {
   if (layout_ == value)
     return;
   layout_ = value;
+  // 排列方向变了,间距的下界也跟着变(单行与多行钳的不是同一个 padding)
+  styleControls_->setSpacingFloors(value == QStringLiteral("horizontal"));
   emit changed();
   updatePreview();
 }
@@ -499,7 +554,7 @@ void StyleModel::load() {
   layout_ = activeHorizontal_ ? QStringLiteral("horizontal")
                               : QStringLiteral("vertical");
 
-  styleControls_->load(settings_);
+  styleControls_->load(settings_, activeHorizontal_);
 
   // 先置 loaded_ 再刷新预览:updatePreview 有「未载入即返回」守卫,
   // 顺序反了会让首次预览拿到空色表(QML 侧全走 fallback 色)
@@ -562,14 +617,16 @@ void StyleModel::updatePreview() {
   previewMetrics_ = QVariantMap{
       {QStringLiteral("cornerRadius"),
        styleControls_->intValue(QStringLiteral("layout/corner_radius"), 9)},
-      {QStringLiteral("hiliteRadius"),
-       styleControls_->intValue(QStringLiteral("layout/round_corner"), 0)},
       {QStringLiteral("marginX"), marginX},
       {QStringLiteral("marginY"), marginY},
       // 高亮纵向外扩与边框:引擎只有 border_width>0 才画边框,
       // 预览与引擎同判,不额外加描边
+      {QStringLiteral("hilitePaddingX"),
+       settings_.GetStyleInt("layout/hilite_padding_x",
+                             settings_.GetStyleInt("layout/hilite_padding", 0))},
       {QStringLiteral("hilitePaddingY"),
-       settings_.GetStyleInt("layout/hilite_padding_y", 5)},
+       settings_.GetStyleInt("layout/hilite_padding_y",
+                             settings_.GetStyleInt("layout/hilite_padding", 0))},
       {QStringLiteral("borderWidth"),
        settings_.GetStyleInt("layout/border_width", 0)},
       {QStringLiteral("pageSize"), pageSize_},
@@ -591,8 +648,9 @@ void StyleModel::updatePreview() {
            QStringLiteral("true")},
       {QStringLiteral("inlinePreedit"),
        styleControls_->boolValue(QStringLiteral("inline_preedit"), true)},
+      // 行表里的 alpha 是界面空间的透明度,预览合成要的是不透明度
       {QStringLiteral("alpha"),
-       styleControls_->doubleValue(QStringLiteral("alpha"), 1.0)},
+       1.0 - styleControls_->doubleValue(QStringLiteral("alpha"), 0.0)},
   };
   emit previewChanged();
 }

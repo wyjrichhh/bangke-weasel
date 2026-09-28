@@ -4,6 +4,8 @@ import Bangke.Pages
 // 单块候选窗预览:配色/圆角/间距/字号/横竖排/字体全部取真实配置
 // (app.style.previewLight|Dark + previewMetrics),按 mac 预览同一组样例
 // 候选画。竖排(text_orientation)在 Windows 引擎上本就回落堆叠,这里同画法。
+// 单行/多行都先占一行放编码(inline_preedit 关闭时),候选列表在下面 ——
+// 单行的区别只是候选彼此横排,不是编码与候选挤同一行。
 //
 // 缩放:不用 Item.scale 整体缩(文本会被压糊),而是 zoom 因子乘进字号与
 // 度量 —— 文字永远按真实字号光栅化。unitW/unitH 是 zoom=1 的裸尺寸,
@@ -28,7 +30,9 @@ Item {
                    fg.b * a + bg.b * (1 - a), 1)
   }  // metrics map 由父级传入(非属性绑定,安全)
 
-  // 样例池:首条高亮并带注释;显示条数 = 每页候选数(与实际一致)
+  // 样例池:首条高亮并带注释;显示条数 = 每页候选数(与实际一致)。
+  // 单行横排也曾限成 2 个(怕 zoom 把字号压小),但 mac 预览是照实画满
+  // 一页的 —— 条数不一致比字号更刺眼,改回跟随每页候选数。
   readonly property var candPool: [
     { label: "1.", text: "蚌壳", comment: "bàng ké" },
     { label: "2.", text: "帮客", comment: "" },
@@ -37,13 +41,11 @@ Item {
     { label: "5.", text: "磅科", comment: "" },
     { label: "6.", text: "傍可", comment: "" },
     { label: "7.", text: "谤克", comment: "" },
-    { label: "8.", text: "塝棵", comment: "" }
+    { label: "8.", text: "塝棵", comment: "" },
+    { label: "9.", text: "螃壳", comment: "" }
   ]
   readonly property int visibleCount: {
     var ps = m.pageSize !== undefined ? m.pageSize : 5
-    // 单行横排限 2 个:5 词横排过宽,预览 zoom 被压到字号看不清
-    if (m.horizontal === true)
-      return Math.min(2, candPool.length)
     return Math.max(1, Math.min(candPool.length, ps))
   }
   readonly property var cands: candPool.slice(0, visibleCount)
@@ -108,23 +110,38 @@ Item {
   }
 
   Metrics { id: mPre; text: "bang'ke"; font.pointSize: mini.pt(mini.fontPoint) }
-  Metrics { id: m0l; text: mini.cands[0].label; font.pointSize: mini.pt(mini.labelPoint) }
-  Metrics { id: m0t; text: mini.cands[0].text; font.pointSize: mini.pt(mini.fontPoint) }
-  Metrics { id: m0c; text: mini.cands[0].comment; font.pointSize: mini.pt(mini.commentPoint) }
-  Metrics { id: m1l; text: mini.cands[1].label; font.pointSize: mini.pt(mini.labelPoint) }
-  Metrics { id: m1t; text: mini.cands[1].text; font.pointSize: mini.pt(mini.fontPoint) }
-  Metrics { id: m2l; text: mini.cands[2].label; font.pointSize: mini.pt(mini.labelPoint) }
-  Metrics { id: m2t; text: mini.cands[2].text; font.pointSize: mini.pt(mini.fontPoint) }
-  Metrics { id: m3l; text: mini.cands[3].label; font.pointSize: mini.pt(mini.labelPoint) }
-  Metrics { id: m3t; text: mini.cands[3].text; font.pointSize: mini.pt(mini.fontPoint) }
-  Metrics { id: m4l; text: mini.cands[4].label; font.pointSize: mini.pt(mini.labelPoint) }
-  Metrics { id: m4t; text: mini.cands[4].text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m0l; text: mini.candAt(0).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m0t; text: mini.candAt(0).text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m0c; text: mini.candAt(0).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m1l; text: mini.candAt(1).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m1t; text: mini.candAt(1).text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m2l; text: mini.candAt(2).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m2t; text: mini.candAt(2).text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m3l; text: mini.candAt(3).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m3t; text: mini.candAt(3).text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m4l; text: mini.candAt(4).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m4t; text: mini.candAt(4).text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m5l; text: mini.candAt(5).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m5t; text: mini.candAt(5).text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m6l; text: mini.candAt(6).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m6t; text: mini.candAt(6).text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m7l; text: mini.candAt(7).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m7t; text: mini.candAt(7).text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m8l; text: mini.candAt(8).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m8t; text: mini.candAt(8).text; font.pointSize: mini.pt(mini.fontPoint) }
 
+  // 样例池按「每页候选数」切片,探针却按池子的全长声明 —— 条数少于池子时
+  // 后面的下标取不到值,直接下标会报 "Cannot read property 'label' of
+  // undefined"(每页 1~4 个候选时 m4 就已经越界了)
+  function candAt(i) {
+    return i < cands.length ? cands[i]
+                            : { label: "", text: "", comment: "" }
+  }
   function lbl(i) {
-    return [m0l, m1l, m2l, m3l, m4l][i]
+    return [m0l, m1l, m2l, m3l, m4l, m5l, m6l, m7l, m8l][i]
   }
   function txt(i) {
-    return [m0t, m1t, m2t, m3t, m4t][i]
+    return [m0t, m1t, m2t, m3t, m4t, m5t, m6t, m7t, m8t][i]
   }
 
   // 行高 = 正文字体的行高(TextMetrics.height),unit 值
@@ -139,7 +156,11 @@ Item {
     return w
   }
 
-  readonly property real preeditH: (m.inlinePreedit === false) ? rowH : 0
+  // 编码独占最上面一行 —— 单行/多行都一样(引擎 HorizontalLayout 与
+  // VerticalLayout 都是先放编码、再放候选)。单行只是「候选自己排成一行」,
+  // 编码不与候选挤在同一行,所以有编码行时候选列表是第二行。
+  readonly property bool showsPreedit: m.inlinePreedit === false
+  readonly property real preeditH: showsPreedit ? rowH : 0
   readonly property real unitContentH: {
     var rowsH = horizontal ? rowH
                            : cands.length * rowH + (cands.length - 1) * candSpacing
@@ -154,7 +175,7 @@ Item {
       for (var k = 0; k < cands.length; ++k)
         w = Math.max(w, rowWidth(k))
     }
-    // 编码行(inline_preedit 关闭时)也要在面板内
+    // 编码行也要在面板内
     if (preeditH > 0)
       w = Math.max(w, marginX + mPre.advanceWidth)
     return w
@@ -178,29 +199,37 @@ Item {
     border.color: mini.tint("border_color", "#FF808080")
   }
 
-  // 高亮块:首行整块(引擎 margin_x=0+padding_x 外扩 → 左右满铺贴边),
-  // 纵向 = 行高 + 上下各外扩 hilite_padding_y。圆角逻辑同引擎
-  // (_SnapHighlightToPanel):贴面板顶的那沿用面板半径(首行=上沿圆),
-  // 另一沿用 round_corner(默认 0=直角)→ 首行高亮「上圆下直」
+  // 高亮块:引擎里 = 首候选的文字矩形,四边各外扩 hilite_padding ——
+  // 左缘因此顶到面板左边(margin_x 与 padding_x 相等时正好为 0),右缘
+  // 超出文字一个 padding,纵向 = 行高 + 上下各一个 padding
+  readonly property real hilitePadX: m.hilitePaddingX !== undefined ? m.hilitePaddingX : 5
   readonly property real hilitePadY: m.hilitePaddingY !== undefined ? m.hilitePaddingY : 5
-  // 高亮半径分态:贴面板顶/底(无拼音行、首末行)才用面板圆角(snap 语义);
-  // 拼音行下方的第一候选不贴边 → 用 round_corner(出厂 0=直角,mac 同观感)
-  readonly property real hiliteR: (preeditH > 0)
-      ? (m.hiliteRadius !== undefined ? m.hiliteRadius : 0)
-      : Math.max(m.hiliteRadius !== undefined ? m.hiliteRadius : 0,
-                 panelR)
   readonly property color hiliteColor: mini.tint("hilited_candidate_back_color", "#FFB3D7FF")
   // 面板圆角全程跟配置(滑杆全程生效);边距随圆角放大(mac edgeInset
   // = corner+border 语义),序号永远在弧线之后
   readonly property real panelR: m.cornerRadius !== undefined ? m.cornerRadius : 9
 
+  readonly property real hiliteTop: zz(mini.preeditH + (mini.preeditH > 0 ? mini.spacing : 0)
+                                       + mini.marginY) - zz(mini.hilitePadY)
+  // 四角的圆角照引擎的圆角表(_PrepareRoundInfo 的 is_to_round_corner,
+  // 取 FIRST_CAND 那一格):只有贴面板外缘的角才带半径,半径取面板圆角
+  // (引擎那边贴边即 Hemispherical → 用 round_corner_ex)。四种组合:
+  //   单行+有编码行 {直,圆,直,直}  单行+无编码行 {圆,圆,圆,圆}
+  //   多行+有编码行 {直,直,直,直}  多行+无编码行 {圆,直,圆,直}
+  readonly property bool roundTop: mini.preeditH <= 0
+  readonly property bool roundBottomLeft: mini.horizontal
+  readonly property bool roundBottomRight: mini.horizontal && mini.preeditH <= 0
+  readonly property real hiliteR: (roundTop || roundBottomLeft) ? mini.panelR : 0
+
   Rectangle {
     id: hilite
-    y: zz(mini.preeditH + (mini.preeditH > 0 ? mini.spacing : 0) + mini.marginY) - zz(mini.hilitePadY)
-    // 多行:整行满铺;单行(mac 同观感):只包住第一个候选词,左右留
-    // margin 边距 —— 引擎 0.4.22+ 已同步(删 HorizontalLayout 拉右)
-    x: mini.horizontal ? zz(mini.marginX) : 0
-    width: mini.horizontal ? zz(mini.rowWidth(0)) : parent.width
+    // 上沿 = 候选行顶减去纵向外扩(有编码行时就在编码行下方)
+    y: mini.hiliteTop
+    // 左缘贴面板左边:引擎 candidateRect.left - hilite_padding_x = 0
+    x: 0
+    // 多行整行满铺;单行只包住第一个候选词,右缘再多一个 padding
+    width: mini.horizontal ? zz(mini.marginX + mini.rowWidth(0) + mini.hilitePadX)
+                           : parent.width
     // 与引擎同步:多行首行向下补到下一行文字顶(行距-已扩 padding),
     // 高亮块与下一行零空隙且不盖字;单行不扩
     height: zz(mini.rowH + 2 * mini.hilitePadY) +
@@ -209,27 +238,42 @@ Item {
     radius: zz(mini.hiliteR)
     color: mini.hiliteColor
   }
-  // 下沿两角补直(仅多行):多行高亮贴面板顶,上沿用面板圆角、下沿用
-  // round_corner(默认 0 直角)。单行高亮是独立小块,四角全圆(mac 同观感)
+  // 补直:半径 > 0 却有角不该圆时,用高亮色的小方块把那个角补回直角
   Rectangle {
-    visible: !mini.horizontal
-    x: 0
-    y: hilite.y + hilite.height - zz(mini.hiliteR)
-    width: zz(mini.hiliteR)
-    height: zz(mini.hiliteR)
+    visible: hilite.radius > 0 && !mini.roundTop
+    x: hilite.x
+    y: hilite.y
+    width: hilite.radius
+    height: hilite.radius
     color: mini.hiliteColor
   }
   Rectangle {
-    visible: !mini.horizontal
-    x: parent.width - zz(mini.hiliteR)
-    y: hilite.y + hilite.height - zz(mini.hiliteR)
-    width: zz(mini.hiliteR)
-    height: zz(mini.hiliteR)
+    visible: hilite.radius > 0 && !mini.roundTop
+    x: hilite.x + hilite.width - hilite.radius
+    y: hilite.y
+    width: hilite.radius
+    height: hilite.radius
     color: mini.hiliteColor
   }
-  // 编码行(inline_preedit 关闭时才有)
+  Rectangle {
+    visible: hilite.radius > 0 && !mini.roundBottomLeft
+    x: hilite.x
+    y: hilite.y + hilite.height - hilite.radius
+    width: hilite.radius
+    height: hilite.radius
+    color: mini.hiliteColor
+  }
+  Rectangle {
+    visible: hilite.radius > 0 && !mini.roundBottomRight
+    x: hilite.x + hilite.width - hilite.radius
+    y: hilite.y + hilite.height - hilite.radius
+    width: hilite.radius
+    height: hilite.radius
+    color: mini.hiliteColor
+  }
+  // 编码(inline_preedit 关闭时才有):单行多行都独占最上面一行
   Text {
-    visible: mini.preeditH > 0
+    visible: mini.showsPreedit
     x: zz(mini.marginX)
     y: zz(mini.marginY)
     height: zz(mini.rowH)
@@ -251,7 +295,8 @@ Item {
       readonly property var c: mini.cands[candRow.index]
       readonly property bool first: candRow.index === 0
       readonly property real rowsTopUnit: mini.marginY + mini.preeditH + (mini.preeditH > 0 ? mini.spacing : 0)
-      x: mini.horizontal ? zz(mini.marginX + (candRow.index > 0 ? precedingUnit() : 0)) : zz(mini.marginX)
+      x: mini.horizontal ? zz(mini.marginX + (candRow.index > 0 ? precedingUnit() : 0))
+                         : zz(mini.marginX)
       y: mini.horizontal ? zz(rowsTopUnit)
                          : zz(rowsTopUnit + candRow.index * (mini.rowH + mini.candSpacing))
       width: zz(mini.rowWidth(candRow.index))
@@ -296,7 +341,7 @@ Item {
         verticalAlignment: Text.AlignVCenter
         text: candRow.c.comment
         visible: candRow.c.comment.length > 0 && mini.commentVisible
-        color: candRow.first ? mini.tint("hilited_comment_color", "#FF808080")
+        color: candRow.first ? mini.tint("hilited_comment_text_color", "#FF808080")
                              : mini.tint("comment_text_color", "#FF808080")
         font.family: mini.family
         font.weight: mini.weight
