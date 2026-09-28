@@ -115,10 +115,14 @@ void BangkePanel::RegisterPanelClass() {
 
 bool BangkePanel::Create(HWND parent) {
   RegisterPanelClass();
+  // 不能带 WS_DISABLED:禁用的窗口收不到鼠标消息 —— 点击候选上屏、
+  // hover_type 悬停高亮会一起失效(全工程也没有一处 EnableWindow 把它
+  // 打开)。窗口比可见面板大一圈,靠 WM_NCHITTEST 返回 HTTRANSPARENT
+  // 保证那一圈仍然穿透
   m_hWnd = ::CreateWindowExW(
       WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT,
-      PANEL_CLASS, L"", WS_POPUP | WS_CLIPSIBLINGS | WS_DISABLED, 0, 0, 0, 0,
-      parent, NULL, GetModuleHandle(NULL), this);
+      PANEL_CLASS, L"", WS_POPUP | WS_CLIPSIBLINGS, 0, 0, 0, 0, parent, NULL,
+      GetModuleHandle(NULL), this);
   return m_hWnd != NULL;
 }
 
@@ -173,6 +177,18 @@ LRESULT CALLBACK BangkePanel::WndProc(HWND hwnd,
       return 0;
     case WM_MOUSEACTIVATE:
       return MA_NOACTIVATE;
+    case WM_NCHITTEST: {
+      // offsetX/offsetY 那圈是留给描边和阴影的透明边距 —— 里面的点击要
+      // 穿透到下面的应用,不然面板附近的文字会点不动
+      POINT pt = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+      ::ScreenToClient(hwnd, &pt);
+      CRect face(0, 0, 0, 0);
+      if (self->m_layout)
+        face = self->m_layout->GetContentRect();
+      const int slack = self->DPI_SCALE(self->m_style.border) + 1;
+      face.InflateRect(slack, slack);
+      return face.PtInRect(pt) ? HTCLIENT : HTTRANSPARENT;
+    }
     case WM_LBUTTONDOWN:
       self->OnLButtonDown(wParam, lParam);
       return 0;
@@ -281,73 +297,6 @@ void BangkePanel::_InitFontRes(bool forced) {
   dpiScaleLayout = (float)dpi / 96.0f;
 }
 
-static HBITMAP CopyDCToBitmap(HDC hDC, LPRECT lpRect) {
-  if (!hDC || !lpRect || IsRectEmpty(lpRect))
-    return NULL;
-  HDC hMemDC = NULL;
-  HBITMAP hBitmap = NULL, hOldBitmap = NULL;
-  int nX, nY, nX2, nY2;
-  int nWidth, nHeight;
-
-  nX = lpRect->left;
-  nY = lpRect->top;
-  nX2 = lpRect->right;
-  nY2 = lpRect->bottom;
-  nWidth = nX2 - nX;
-  nHeight = nY2 - nY;
-
-  hMemDC = CreateCompatibleDC(hDC);
-  if (!hMemDC)
-    return NULL;
-  hBitmap = CreateCompatibleBitmap(hDC, nWidth, nHeight);
-  if (!hBitmap) {
-    DeleteDC(hMemDC);
-    return NULL;
-  }
-  hOldBitmap = (HBITMAP)SelectObject(hMemDC, hBitmap);
-  if (!hOldBitmap) {
-    DeleteObject(hBitmap);
-    DeleteDC(hMemDC);
-    return NULL;
-  }
-  if (!BitBlt(hMemDC, 0, 0, nWidth, nHeight, hDC, nX, nY, SRCCOPY)) {
-    SelectObject(hMemDC, hOldBitmap);
-    DeleteObject(hBitmap);
-    DeleteDC(hMemDC);
-    return NULL;
-  }
-  SelectObject(hMemDC, hOldBitmap);
-  DeleteDC(hMemDC);
-  return hBitmap;
-}
-
-void BangkePanel::_CaptureRect(CRect& rect) {
-  HDC ScreenDC = ::GetDC(NULL);
-  CRect rc;
-  ::GetWindowRect(m_hWnd, &rc);
-  POINT WindowPosAtScreen = {rc.left, rc.top};
-  CRect captureRect = rect;
-  captureRect.OffsetRect(WindowPosAtScreen);
-  HBITMAP bmp = CopyDCToBitmap(ScreenDC, LPRECT(captureRect));
-  if (!bmp) {
-    ::ReleaseDC(NULL, ScreenDC);
-    return;
-  }
-  if (!::OpenClipboard(m_hWnd)) {
-    BK_DEBUG << "_CaptureRect: OpenClipboard failed";
-    DeleteObject(bmp);
-    ::ReleaseDC(NULL, ScreenDC);
-    return;
-  }
-  EmptyClipboard();
-  if (!SetClipboardData(CF_BITMAP, bmp)) {
-    BK_DEBUG << "_CaptureRect: SetClipboardData failed";
-    DeleteObject(bmp);
-  }
-  CloseClipboard();
-  ::ReleaseDC(NULL, ScreenDC);
-}
-
 void BangkePanel::OnLButtonDown(WPARAM wParam, LPARAM lParam) {
   if (hide_candidates)
     return;
@@ -355,47 +304,6 @@ void BangkePanel::OnLButtonDown(WPARAM wParam, LPARAM lParam) {
   point.x = GET_X_LPARAM(lParam);
   point.y = GET_Y_LPARAM(lParam);
 
-  // capture
-  if (m_style.click_to_capture) {
-    CRect recth = m_layout->GetCandidateRect((int)m_ctx.cinfo.highlighted);
-    if (m_istorepos)
-      recth.OffsetRect(0, m_offsetys[m_ctx.cinfo.highlighted]);
-    recth.InflateRect(DPI_SCALE(m_style.hilite_padding_x),
-                      DPI_SCALE(m_style.hilite_padding_y));
-    if (recth.PtInRect(point))
-      _CaptureRect(recth);
-    else {
-      if (COLORTRANSPARENT(m_style.shadow_color) &&
-          DPI_SCALE(m_style.shadow_radius) != 0) {
-        CRect crc(rcw);
-        int shadow_gap = (DPI_SCALE(m_style.shadow_offset_x) == 0 &&
-                          DPI_SCALE(m_style.shadow_offset_y) == 0)
-                             ? 2 * DPI_SCALE(m_style.shadow_radius)
-                             : DPI_SCALE(m_style.shadow_radius) +
-                                   DPI_SCALE(m_style.shadow_radius) / 2;
-        int ofx = DPI_SCALE(m_style.hilite_padding_x) +
-                          abs(DPI_SCALE(m_style.shadow_offset_x)) +
-                          shadow_gap >
-                      abs(DPI_SCALE(m_style.margin_x))
-                  ? DPI_SCALE(m_style.hilite_padding_x) +
-                        abs(DPI_SCALE(m_style.shadow_offset_x)) +
-                        shadow_gap - abs(DPI_SCALE(m_style.margin_x))
-                  : 0;
-        int ofy = DPI_SCALE(m_style.hilite_padding_y) +
-                          abs(DPI_SCALE(m_style.shadow_offset_y)) +
-                          shadow_gap >
-                      abs(DPI_SCALE(m_style.margin_y))
-                  ? DPI_SCALE(m_style.hilite_padding_y) +
-                        abs(DPI_SCALE(m_style.shadow_offset_y)) +
-                        shadow_gap - abs(DPI_SCALE(m_style.margin_y))
-                  : 0;
-        crc.DeflateRect(m_layout->offsetX - ofx, m_layout->offsetY - ofy);
-        _CaptureRect(crc);
-      } else {
-        _CaptureRect(rcw);
-      }
-    }
-  }
   {
     if (!m_style.inline_preedit && m_candidateCount != 0 &&
         COLORNOTTRANSPARENT(m_style.prevpage_color) &&
@@ -458,20 +366,26 @@ void BangkePanel::OnLButtonUp(WPARAM wParam, LPARAM lParam) {
   bar_scale_ = 1.0;
   ptimer = 0;
   {
-    // select by click
-    CRect rect = m_layout->GetCandidateRect((int)m_ctx.cinfo.highlighted);
-    if (m_istorepos)
-      rect.OffsetRect(0, m_offsetys[m_ctx.cinfo.highlighted]);
-    rect.InflateRect(DPI_SCALE(m_style.hilite_padding_x),
-                     DPI_SCALE(m_style.hilite_padding_y));
-    if (rect.PtInRect(point)) {
-      size_t i = m_ctx.cinfo.highlighted;
-      if (_UICallback) {
-        m_mouse_entry = false;
-        _UICallback(&i, NULL, NULL, NULL);
-        if (!m_status.composing)
-          Destroy();
+    // select by click:点哪个候选就上屏哪个(mac 也是按点击位置算 index),
+    // 不再只认当前高亮那一项
+    int hit = -1;
+    for (size_t i = 0; i < m_candidateCount && i < MAX_CANDIDATES_COUNT; ++i) {
+      CRect rect = m_layout->GetCandidateRect((int)i);
+      if (m_istorepos)
+        rect.OffsetRect(0, m_offsetys[i]);
+      rect.InflateRect(DPI_SCALE(m_style.hilite_padding_x),
+                       DPI_SCALE(m_style.hilite_padding_y));
+      if (rect.PtInRect(point)) {
+        hit = (int)i;
+        break;
       }
+    }
+    if (hit >= 0 && _UICallback) {
+      size_t i = (size_t)hit;
+      m_mouse_entry = false;
+      _UICallback(&i, NULL, NULL, NULL);
+      if (!m_status.composing)
+        Destroy();
     } else {
       RedrawWindow();
     }
@@ -727,6 +641,20 @@ void BangkePanel::_SnapHighlightToPanel(CRect& rect, IsToRoundStruct& rd) {
   }
   if (rd.IsBottomLeftNeedToRound && rd.IsBottomRightNeedToRound) {
     rect.bottom = bg.bottom;
+    atWindowEdge = true;
+  }
+  // 单行末行候选:圆角表只给左下角圆(不是「两个角都圆」),上面那条判据
+  // 落不进来,高亮按 padding 外扩后离面板底还差 margin_y - padding_y,
+  // 下沿就露出一条背景色(mac 把高亮夹到面板边界,没有这条缝)。
+  // 末行的这个差值是个定值(real_margin_y - padding_y),照它比对 ——
+  // 非末行还多着整行行高+行距,不会误判
+  const int lastRowGap =
+      m_layout->real_margin_y - DPI_SCALE(m_style.hilite_padding_y);
+  if (lastRowGap >= 0 && bg.bottom - rect.bottom <= lastRowGap + 2) {
+    // 描边以面板轮廓为中心画,内侧那半个线宽压在内容区上 —— 高亮要停在
+    // 描边的内沿,否则会压住下边框(mac 的 outerBox 同样让出
+    // borderLineWidth / 2)。border_width = 0 时就是正好贴轮廓
+    rect.bottom = bg.bottom - DPI_SCALE(m_style.border) / 2;
     atWindowEdge = true;
   }
   if (atWindowEdge)

@@ -454,6 +454,11 @@ BOOL BangkeTSF::_InitLanguageBar() {
     return FALSE;
   }
 
+  // 恒显示。语言栏这一项是用户打开设置页的入口(设置窗只从它的右键菜单进),
+  // 曾经接成 style/display_tray_icon 的显隐 —— 但 TSF 初始化时样式还没从
+  // 服务端取回来,UIStyle 里该字段是构造默认的 false,于是图标一开始就被
+  // 摘掉,用户再也点不到设置页。要恢复成可隐藏,得先让「样式未到达」判为
+  // 显示,并在样式刷新时重新 Show。
   _pLangBarButton->Show(TRUE);
   fRet = TRUE;
 

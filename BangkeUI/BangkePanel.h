@@ -75,7 +75,6 @@ class BangkePanel {
     return (int)(t * dpiScaleLayout);
   }
   void _InitFontRes(bool forced = false);
-  void _CaptureRect(CRect& rect);
   void _CreateLayout();
   void _ResizeWindow();
   void _RepositionWindow(const bool& adj = false);
