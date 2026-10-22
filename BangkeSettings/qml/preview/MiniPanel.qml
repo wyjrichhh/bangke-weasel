@@ -19,16 +19,9 @@ Item {
   property var m: ({})
   property real zoom: 1
   property bool horizontal: m.horizontal === true
-  // 背板灰(浅/深半区):半透明时把「背板→面板→高亮」的叠层直接合成
-  // 为单层不透明色 —— 半透明悬浮会露出叠层边缘(用户实验:alpha<1 时
-  // 显形),mac 的真实 NSPanel 合成无此痕迹
-  property color boardColor: "#C0C0C0"
-
-  function blend(fg, bg, a) {
-    return Qt.rgba(fg.r * a + bg.r * (1 - a),
-                   fg.g * a + bg.g * (1 - a),
-                   fg.b * a + bg.b * (1 - a), 1)
-  }  // metrics map 由父级传入(非属性绑定,安全)
+  // 与 macOS 和 Windows 实际候选窗一致：合成后统一应用整窗透明度。
+  layer.enabled: opacity < 1
+  opacity: Math.max(0, Math.min(1, m.alpha !== undefined ? m.alpha : 1))
 
   // 样例池:首条高亮并带注释;显示条数 = 每页候选数(与实际一致)。
   // 单行横排也曾限成 2 个(怕 zoom 把字号压小),但 mac 预览是照实画满
@@ -52,22 +45,6 @@ Item {
 
   function tint(key, fallback) {
     var c = Theme.argb(colors ? colors[key] : undefined, fallback)
-    // 整窗透明(mac alphaValue):alpha < 1 时不做半透明悬浮,而是与
-    // 背板/面板合成后的不透明色 —— 视觉即 ULW 合成的最终观感,
-    // 且无叠层痕迹
-    if (m.alpha !== undefined && m.alpha < 1) {
-      const panel = Theme.argb(colors ? colors.back_color : undefined,
-                               "#FFFFFF")
-      const panelFlat = blend(panel, boardColor, m.alpha)
-      if (key === "back_color")
-        return panelFlat
-      if (key === "hilited_candidate_back_color" ||
-          key === "hilited_back_color")
-        return blend(c, panelFlat, m.alpha)
-      // 文字/序号/注释:与各自底色合成
-      const under = key.indexOf("hilited") === 0 ? panelFlat : panelFlat
-      return blend(c, under, m.alpha)
-    }
     return c
   }
 
@@ -195,6 +172,9 @@ Item {
     color: mini.tint("back_color", "#FFFFFF")
     // 引擎只在 border_width > 0 时画边框(border_color 不透明),
     // 预览同判 —— 不额外加描边
+    // 恒画 1px:Qt 的 Rectangle 边框是往内画的,按配置宽度(可能 9px)画会让
+    // 可见面缩进去,而高亮按引擎语义只让 border/2,两者对不上就露边。
+    // 引擎那边描边是以路径为中心画的,这里用 1px 近似即可
     border.width: m.borderWidth !== undefined && m.borderWidth > 0 ? 1 : 0
     border.color: mini.tint("border_color", "#FF808080")
   }
@@ -211,36 +191,63 @@ Item {
 
   readonly property real hiliteTop: zz(mini.preeditH + (mini.preeditH > 0 ? mini.spacing : 0)
                                        + mini.marginY) - zz(mini.hilitePadY)
-  // 四角的圆角照引擎的圆角表(_PrepareRoundInfo 的 is_to_round_corner,
-  // 取 FIRST_CAND 那一格):只有贴面板外缘的角才带半径,半径取面板圆角
-  // (引擎那边贴边即 Hemispherical → 用 round_corner_ex)。四种组合:
-  //   单行+有编码行 {直,圆,直,直}  单行+无编码行 {圆,圆,圆,圆}
+  // 描边以面板轮廓为中心画,内侧半个线宽压在内容区上 —— 高亮贴边时让它停在
+  // 描边内沿,否则会盖住上下边框(引擎同规则:_SnapHighlightToPanel 让 border/2)
+  readonly property real hiliteInset:
+      (m.borderWidth !== undefined && m.borderWidth > 0) ? m.borderWidth / 2 : 0
+  readonly property real hiliteInsetTop: mini.atTop ? zz(mini.hiliteInset) : 0
+  readonly property real hiliteInsetBottom: mini.atBottom ? zz(mini.hiliteInset) : 0
+  readonly property real hiliteInsetLeft: mini.atLeft ? zz(mini.hiliteInset) : 0
+  readonly property real hiliteInsetRight: mini.atRight ? zz(mini.hiliteInset) : 0
+  // 圆角规则:一个角只有当「它的两条边都贴着面板边」时才圆 —— 那种角与面板
+  // 的弧相邻,必须同心同半径;只贴一条边的角是直角。首候选的右缘后面还跟着
+  // 下一个候选(不在面板右缘上),所以右上右下都是直角;左缘贴面板左边,左侧
+  // 两角跟着面板圆角。四种组合与引擎圆角表一致:
+  //   单行+有编码行 {直,圆,直,直}  单行+无编码行 {圆,圆,直,直}
   //   多行+有编码行 {直,直,直,直}  多行+无编码行 {圆,直,圆,直}
-  readonly property bool roundTop: mini.preeditH <= 0
-  readonly property bool roundBottomLeft: mini.horizontal
-  readonly property bool roundBottomRight: mini.horizontal && mini.preeditH <= 0
-  readonly property real hiliteR: (roundTop || roundBottomLeft) ? mini.panelR : 0
+  // (顺序:左上, 左下, 右上, 右下)
+  readonly property bool atTop: mini.preeditH <= 0
+  readonly property bool atLeft: true
+  readonly property bool atRight: mini.horizontal
+      ? (hilite.x + hilite.width >= mini.width - 0.5) : true
+  readonly property bool atBottom: mini.horizontal ? true : (mini.cands.length < 2)
+  readonly property bool roundTopLeft: atTop && atLeft
+  readonly property bool roundBottomLeft: atBottom && atLeft
+  readonly property bool roundTopRight: atTop && atRight
+  readonly property bool roundBottomRight: atBottom && atRight
+  readonly property real hiliteR: (roundTopLeft || roundBottomLeft ||
+                                   roundTopRight || roundBottomRight)
+      ? mini.panelR : 0
 
   Rectangle {
     id: hilite
-    // 上沿 = 候选行顶减去纵向外扩(有编码行时就在编码行下方)
-    y: mini.hiliteTop
-    // 左缘贴面板左边:引擎 candidateRect.left - hilite_padding_x = 0
-    x: 0
-    // 多行整行满铺;单行只包住第一个候选词,右缘再多一个 padding
-    width: mini.horizontal ? zz(mini.marginX + mini.rowWidth(0) + mini.hilitePadX)
-                           : parent.width
-    // 与引擎同步:多行首行向下补到下一行文字顶(行距-已扩 padding),
-    // 高亮块与下一行零空隙且不盖字;单行不扩
-    height: zz(mini.rowH + 2 * mini.hilitePadY) +
+    // 上沿 = 候选行顶减去纵向外扩(有编码行时就在编码行下方);贴面板上沿时再
+    // 让出半个线宽给边框。最后两个边各自夹进面板内沿 —— mac 的 expand() 就是
+    // 把高亮夹到 outerBox:padding_y 比 margin_y 大时,按 padding 外扩的高亮
+    // 本来会顶到面板外面(实机与预览同一条规则)
+    readonly property real topRaw: mini.hiliteTop + mini.hiliteInsetTop
+    readonly property real bottomRaw: topRaw + zz(mini.rowH + 2 * mini.hilitePadY) +
             (mini.horizontal || mini.cands.length < 2
                  ? 0 : zz(mini.candSpacing - mini.hilitePadY))
+    readonly property real topEdge: Math.max(mini.hiliteInsetTop, topRaw)
+    readonly property real bottomEdge: Math.min(parent.height - mini.hiliteInsetBottom,
+                                                bottomRaw)
+    y: topEdge
+    // 左缘贴面板左边:引擎 candidateRect.left - hilite_padding_x = 0,贴边时
+    // 同样让出半个线宽给边框
+    x: mini.hiliteInsetLeft
+    // 多行整行满铺;单行只包住第一个候选词,右缘再多一个 padding
+    width: (mini.horizontal ? zz(mini.marginX + mini.rowWidth(0) + mini.hilitePadX)
+                            : parent.width)
+           - mini.hiliteInsetLeft - mini.hiliteInsetRight
+    // 至少留住两个 padding 的高度,别被夹没
+    height: Math.max(zz(2 * mini.hilitePadY), bottomEdge - topEdge)
     radius: zz(mini.hiliteR)
     color: mini.hiliteColor
   }
   // 补直:半径 > 0 却有角不该圆时,用高亮色的小方块把那个角补回直角
   Rectangle {
-    visible: hilite.radius > 0 && !mini.roundTop
+    visible: hilite.radius > 0 && !mini.roundTopLeft
     x: hilite.x
     y: hilite.y
     width: hilite.radius
@@ -248,7 +255,7 @@ Item {
     color: mini.hiliteColor
   }
   Rectangle {
-    visible: hilite.radius > 0 && !mini.roundTop
+    visible: hilite.radius > 0 && !mini.roundTopRight
     x: hilite.x + hilite.width - hilite.radius
     y: hilite.y
     width: hilite.radius
@@ -273,6 +280,7 @@ Item {
   }
   // 编码(inline_preedit 关闭时才有):单行多行都独占最上面一行
   Text {
+    renderType: Text.NativeRendering
     visible: mini.showsPreedit
     x: zz(mini.marginX)
     y: zz(mini.marginY)
@@ -310,6 +318,7 @@ Item {
       }
 
       Text {
+        renderType: Text.NativeRendering
         x: 0
         height: parent.height
         verticalAlignment: Text.AlignVCenter
@@ -323,6 +332,7 @@ Item {
       }
 
       Text {
+        renderType: Text.NativeRendering
         x: zz(mini.lbl(candRow.index).advanceWidth + mini.hiliteSpacing)
         height: parent.height
         verticalAlignment: Text.AlignVCenter
@@ -335,6 +345,7 @@ Item {
       }
 
       Text {
+        renderType: Text.NativeRendering
         x: zz(mini.lbl(candRow.index).advanceWidth + mini.hiliteSpacing
               + mini.txt(candRow.index).advanceWidth + mini.hiliteSpacing)
         height: parent.height

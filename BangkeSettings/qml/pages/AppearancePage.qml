@@ -2,15 +2,21 @@ import QtQuick
 import QtQuick.Layouts
 import Bangke.Pages
 
-// 外观页(mac AppearanceSettingsPage):预览条【固定】不随表单滚动
-// (mac 同构:页头+预览在 Form 之外,方便边调下面的参数边看预览),
-// 颜色/字体/布局/显示/格式五段各自成卡在下方独立滚动。
-// 配色方案、字号、候选排列是 StyleModel 直属属性,
-// 其余行来自 styleControls 的同名段。
+// 紧凑实时预览固定在上方，下方按主题分组滚动编辑。
 ColumnLayout {
+  id: page
+  property string section: "颜色"
+  spacing: 14
 
   MacPreviewStrip {
     Layout.fillWidth: true
+  }
+
+  SectionTabs {
+    Layout.fillWidth: true
+    options: ["颜色", "字体", "布局", "显示", "格式"]
+    value: page.section
+    onEdited: function (value) { page.section = value }
   }
 
   PageScroll {
@@ -19,7 +25,7 @@ ColumnLayout {
 
   Card {
     Layout.fillWidth: true
-    title: "颜色"
+    visible: page.section === "颜色"
 
     ComboRow {
       Layout.fillWidth: true
@@ -42,7 +48,7 @@ ColumnLayout {
 
   Card {
     Layout.fillWidth: true
-    title: "字体"
+    visible: page.section === "字体"
 
     StyleRowGroup {
       Layout.fillWidth: true
@@ -64,7 +70,7 @@ ColumnLayout {
 
   Card {
     Layout.fillWidth: true
-    title: "布局"
+    visible: page.section === "布局"
 
     ComboRow {
       Layout.fillWidth: true
@@ -87,7 +93,7 @@ ColumnLayout {
 
   Card {
     Layout.fillWidth: true
-    title: "显示"
+    visible: page.section === "显示"
 
     StyleRowGroup {
       Layout.fillWidth: true
@@ -98,7 +104,7 @@ ColumnLayout {
 
   Card {
     Layout.fillWidth: true
-    title: "格式"
+    visible: page.section === "格式"
 
     StyleRowGroup {
       Layout.fillWidth: true

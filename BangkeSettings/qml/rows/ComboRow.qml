@@ -58,7 +58,7 @@ RowShell {
     anchors.right: parent.right
     anchors.verticalCenter: parent.verticalCenter
     width: row.fieldWidth
-    height: 28
+    height: Theme.controlHeight
 
     Field {
       anchors.fill: parent
@@ -100,6 +100,7 @@ RowShell {
 
     Popup {
       id: menu
+      objectName: "comboMenu"
       // 向下空间不够时向上翻(mac 弹出菜单同行为) —— 否则弹层超出
       // 窗口底部,最后几条永远看不到(窗口外的部分点不到也滚不到)
       readonly property bool flipUp: {
@@ -111,8 +112,8 @@ RowShell {
       }
       y: flipUp ? -height - 5 : display.height + 5
       width: row.fieldWidth
-      // 高度按条目数算(行高恒 24),不依赖内容实例化的结果
-      height: Math.min(row.entries.length * 24 + 6, 300)
+      // 高度按条目数算(行高取控件高度),不依赖内容实例化的结果
+      height: Math.min(row.entries.length * Theme.controlHeight + 6, 300)
       padding: 3
       closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
@@ -124,33 +125,11 @@ RowShell {
         NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 100; easing.type: Easing.InCubic }
       }
 
-      background: Item {
-        // 软影 = 同心递淡的圆角矩形叠层。不用 MultiEffect:shader 阴影在
-        // 软件/RDP 渲染下 blur 退化,变成实心轮廓块(「外层大方块」的根因);
-        // 纯 Rectangle 在任何渲染器下都可靠
-        Rectangle {
-          anchors.fill: parent
-          anchors.margins: -2
-          anchors.bottomMargin: -7
-          radius: Theme.fieldRadius + 3
-          color: Qt.rgba(0, 0, 0, Theme.dark ? 0.30 : 0.13)
-        }
-        Rectangle {
-          anchors.fill: parent
-          anchors.margins: -1
-          anchors.bottomMargin: -4
-          radius: Theme.fieldRadius + 2
-          color: Qt.rgba(0, 0, 0, Theme.dark ? 0.20 : 0.09)
-        }
-        Rectangle {
-          anchors.fill: parent
-          radius: Theme.fieldRadius + 1
-          color: Theme.dark ? Qt.rgba(0.17, 0.17, 0.18, 0.90)
-                            : Qt.rgba(1, 1, 1, 0.88)
-          border.width: 1
-          border.color: Theme.dark ? Qt.rgba(1, 1, 1, 0.14)
-                                   : Qt.rgba(0, 0, 0, 0.12)
-        }
+      background: Rectangle {
+        radius: Theme.fieldRadius
+        color: Theme.surface
+        border.width: 1
+        border.color: Theme.hair
       }
 
       contentItem: Flickable {
@@ -162,6 +141,7 @@ RowShell {
         contentWidth: width
         contentHeight: column.implicitHeight
         boundsBehavior: Flickable.StopAtBounds
+        onMovementStarted: menu.activeIndex = -1
 
         Column {
           id: column
@@ -172,11 +152,11 @@ RowShell {
 
             delegate: Rectangle {
               id: item
+              objectName: "comboItem" + index
               width: flick.width
-              height: 24
+              height: Theme.controlHeight
               radius: 5
-              readonly property bool active: hover.containsMouse ||
-                                              index === menu.keyIndex
+              readonly property bool active: index === menu.activeIndex
               color: active ? Theme.accent : "transparent"
 
               Txt {
@@ -194,6 +174,13 @@ RowShell {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
+                // 单一活动项：鼠标与键盘共用，移出时只清理自己。
+                onEntered: menu.activeIndex = index
+                onPositionChanged: menu.activeIndex = index
+                onExited: {
+                  if (menu.activeIndex === index)
+                    menu.activeIndex = -1
+                }
                 onClicked: {
                   row.edited(modelData.value)
                   menu.close()
@@ -205,28 +192,33 @@ RowShell {
 
         // 键盘:上下移动、回车选中
         Keys.onUpPressed: function (event) {
-          menu.keyIndex = Math.max(0, menu.keyIndex - 1)
-          flick.contentY = Math.min(flick.contentY, menu.keyIndex * 24)
+          menu.activeIndex = Math.max(0, menu.activeIndex - 1)
+          flick.contentY = Math.min(flick.contentY, menu.activeIndex * Theme.controlHeight)
           event.accepted = true
         }
         Keys.onDownPressed: function (event) {
-          menu.keyIndex = Math.min(row.entries.length - 1, menu.keyIndex + 1)
+          menu.activeIndex = Math.min(row.entries.length - 1, menu.activeIndex + 1)
           flick.contentY = Math.max(flick.contentY,
-                                    (menu.keyIndex + 1) * 24 - flick.height)
+                                    (menu.activeIndex + 1) * Theme.controlHeight - flick.height)
           event.accepted = true
         }
         Keys.onReturnPressed: function (event) {
-          if (menu.keyIndex >= 0 && menu.keyIndex < row.entries.length) {
-            row.edited(row.entries[menu.keyIndex].value)
+          if (menu.activeIndex >= 0 && menu.activeIndex < row.entries.length) {
+            row.edited(row.entries[menu.activeIndex].value)
             menu.close()
           }
           event.accepted = true
         }
       }
 
-      property int keyIndex: -1
-      onOpened: keyIndex = Math.max(0, row.currentIndex)
-      onClosed: keyIndex = -1
+      property int activeIndex: -1
+      onOpened: {
+        activeIndex = row.currentIndex
+        flick.contentY = Math.max(0, Math.min(activeIndex * Theme.controlHeight,
+                                            flick.contentHeight - flick.height))
+        flick.forceActiveFocus()
+      }
+      onClosed: activeIndex = -1
     }
   }
 }

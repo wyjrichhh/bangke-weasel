@@ -4,6 +4,7 @@
 #include <QString>
 #include <QStringList>
 
+#include "update/updatechecker.h"
 #include "models/AiModel.h"
 #include "models/DictModel.h"
 #include "models/GeneralModel.h"
@@ -16,6 +17,7 @@ class Configurator;
 // 这些顺序本身就是行为的一部分(见 onPageChanged/saveAndDeploy),与视图无关。
 class AppController : public QObject {
   Q_OBJECT
+  Q_PROPERTY(QObject* updates READ updates CONSTANT)
   Q_PROPERTY(int pageIndex READ pageIndex WRITE setPageIndex NOTIFY pageIndexChanged)
   Q_PROPERTY(QStringList pageTitles READ pageTitles CONSTANT)
   Q_PROPERTY(QStringList pageSubs READ pageSubs CONSTANT)
@@ -32,6 +34,7 @@ class AppController : public QObject {
                 QObject* parent = nullptr);
   ~AppController() override;
 
+  QObject* updates() const { return updates_; }
   int pageIndex() const { return pageIndex_; }
   void setPageIndex(int index);
 
@@ -56,6 +59,7 @@ class AppController : public QObject {
  signals:
   void pageIndexChanged();
   void savingChanged();
+  void saved();
   // 非阻塞完成提示与模态告知,由 QML 呈现
   void toast(const QString& text);
   void info(const QString& title, const QString& body);
@@ -64,6 +68,7 @@ class AppController : public QObject {
   void onPageChanged(int index);
   void setSaving(bool value);
 
+  bangke::UpdateChecker* updates_ = nullptr;
   Configurator* configurator_ = nullptr;
   GeneralModel* general_ = nullptr;
   StyleModel* style_ = nullptr;
@@ -72,4 +77,6 @@ class AppController : public QObject {
   DictModel* dict_ = nullptr;
   int pageIndex_ = 0;
   bool saving_ = false;
+  bool pendingDeploy_ = false;
+  bool pendingFullDeploy_ = false;
 };

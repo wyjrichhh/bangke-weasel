@@ -7,6 +7,7 @@ import Bangke.Pages
 Button {
   id: btn
   property bool primary: false
+  property bool quiet: false
 
   implicitHeight: Theme.controlHeight
   implicitWidth: Math.max(70, contentItem.implicitWidth + leftPadding + rightPadding)
@@ -45,8 +46,8 @@ Button {
 
   background: Rectangle {
     radius: Theme.fieldRadius
-    color: btn.faceColor
-    border.width: btn.primary ? 0 : 1
+    color: btn.quiet && !btn.hovered && !btn.pressed ? "transparent" : btn.faceColor
+    border.width: btn.primary || btn.quiet ? 0 : 1
     border.color: Theme.dark ? Qt.rgba(1, 1, 1, 0.15) : Qt.rgba(0, 0, 0, 0.12)
     Behavior on color {
       ColorAnimation { duration: 100 }

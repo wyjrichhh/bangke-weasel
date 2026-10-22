@@ -19,15 +19,7 @@ PageScroll {
 
   Card {
     Layout.fillWidth: true
-    title: "方案选单"
-
-    Txt {
-      text: "已启用的方案置顶显示。"
-      color: Theme.ink2
-      font.pixelSize: Theme.subSize
-      Layout.fillWidth: true
-      Layout.topMargin: 10
-    }
+    title: "输入方案"
 
     RowLayout {
       Layout.fillWidth: true

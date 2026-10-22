@@ -2,11 +2,11 @@ import QtQuick
 import QtQuick.Layouts
 import Bangke.Pages
 
-// 智能联想页(mac AIPredictSettingsPage):单卡片,方案用分段选择器且与
-// 配置项同卡 —— 切换滑块时整卡内容一起变化,直观传达「这套配置属于所选
-// 方案」。行顺序与 mac 一致;取值范围/后缀都由 AiModel::fieldRanges 给,
-// 不在 QML 里再抄一份。
-PageScroll {
+// 按方案、候选行为与模型分组，所有编辑保留在草稿中。
+ColumnLayout {
+  id: page
+  property string section: "候选"
+  spacing: 16
 
   readonly property var schemaOptions: {
     var out = []
@@ -29,28 +29,34 @@ PageScroll {
 
   Card {
     Layout.fillWidth: true
-
-    RowShell {
+    ComboRow {
       Layout.fillWidth: true
       showDivider: false
       label: "输入方案"
-      helper: "每个方案单独保存一套 AI 设置"
-      controlWidth: seg.width
-
-      MacSegmented {
-        id: seg
-        anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
-        options: schemaOptions
-        value: app.ai.currentSchema
-        onEdited: function (v) {
-          app.ai.currentSchema = v
-        }
-      }
+      fieldWidth: 220
+      options: schemaOptions
+      value: app.ai.currentSchema
+      onEdited: function (value) { app.ai.currentSchema = value }
     }
+  }
 
+  SectionTabs {
+    Layout.fillWidth: true
+    options: ["候选", "响应", "生成", "模型"]
+    value: page.section
+    onEdited: function (value) { page.section = value }
+  }
+
+  PageScroll {
+    Layout.fillWidth: true
+    Layout.fillHeight: true
+
+  Card {
+    Layout.fillWidth: true
+    visible: page.section === "候选"
     ToggleRow {
       Layout.fillWidth: true
+      showDivider: false
       label: "启用 AI 联想"
       value: app.ai.enabled
       onEdited: function (v) {
@@ -81,7 +87,7 @@ PageScroll {
     SliderRow {
       Layout.fillWidth: true
       label: "AI 候选位置"
-      helper: "AI 候选必须排在扫描范围之后才会出现"
+      helper: "从 0 开始计数，0 为首位；去重扫描范围不限制候选位置"
       min: rangeMin("targetIndex", 0)
       max: rangeMax("targetIndex", 20)
       value: app.ai.targetIndex
@@ -90,8 +96,15 @@ PageScroll {
       }
     }
 
+  }
+
+  Card {
+    visible: page.section === "响应"
+    Layout.fillWidth: true
+
     SliderRow {
       Layout.fillWidth: true
+      showDivider: false
       label: "最小输入长度"
       min: rangeMin("minInputLength", 1)
       max: rangeMax("minInputLength", 40)
@@ -125,15 +138,15 @@ PageScroll {
       }
     }
 
-    Hairline {
-      Layout.fillWidth: true
-      Layout.topMargin: 8
-      Layout.bottomMargin: 8
-      color: Theme.hairSoft
-    }
+  }
+
+  Card {
+    visible: page.section === "生成"
+    Layout.fillWidth: true
 
     SliderRow {
       Layout.fillWidth: true
+      showDivider: false
       label: "去重扫描范围"
       min: rangeMin("searchRange", 1)
       max: rangeMax("searchRange", 50)
@@ -177,8 +190,15 @@ PageScroll {
       }
     }
 
+  }
+
+  Card {
+    visible: page.section === "模型"
+    Layout.fillWidth: true
+
     ComboRow {
       Layout.fillWidth: true
+      showDivider: false
       label: "运算设备"
       fieldWidth: 110
       options: app.ai.deviceOptions
@@ -192,8 +212,16 @@ PageScroll {
       Layout.fillWidth: true
       label: "模型路径"
       readOnly: true
-      fieldWidth: 260
+      fieldWidth: Math.max(220, Math.min(440, page.width - 180))
       value: app.ai.modelPath
     }
+    RowLayout {
+      Layout.alignment: Qt.AlignRight
+      Layout.topMargin: 6
+      Layout.bottomMargin: 6
+      Btn { text: "选择模型目录…"; enabled: app.ai.currentSchema.length > 0; onClicked: app.ai.chooseModel() }
+      Btn { text: "恢复默认模型"; enabled: app.ai.currentSchema.length > 0; onClicked: app.ai.resetModel() }
+    }
+  }
   }
 }

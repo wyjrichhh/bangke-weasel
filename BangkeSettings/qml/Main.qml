@@ -3,19 +3,18 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Bangke.Pages
 
-// 窗口用 Windows 原生标题栏(系统按钮与圆角);内容区保持 mac 布局:
-// 左侧 200px 侧栏 + 底部「恢复默认 / 取消 / 保存并应用」。取消 = 关窗
-// 丢弃草稿(模型只有显式保存才落盘);恢复默认只改草稿,仍要点保存。
+// 原生窗口框架；取消丢弃草稿，恢复默认仍需显式保存。
 Window {
   id: window
 
-  width: 740
-  height: 680
-  minimumWidth: 700
-  minimumHeight: 620
+  width: 960
+  height: 660
+  minimumWidth: 780
+  minimumHeight: 580
   visible: true
   title: "蚌壳拼音设置"
   color: Theme.ground
+  onClosing: function (event) { if (app.saving) event.accepted = false }
 
   // 系统深浅:QML 单例拿不到注入的上下文属性,由这里把值喂进去
   Binding {
@@ -29,7 +28,8 @@ Window {
     spacing: 0
 
     Sidebar {
-      Layout.preferredWidth: 200
+      enabled: !app.saving
+      Layout.preferredWidth: 194
       Layout.fillHeight: true
     }
 
@@ -40,20 +40,21 @@ Window {
 
       PageHeader {
         Layout.fillWidth: true
-        Layout.leftMargin: 24
-        Layout.rightMargin: 24
-        Layout.topMargin: 12
+        Layout.leftMargin: 30
+        Layout.rightMargin: 30
+        Layout.topMargin: 28
         title: app.pageTitles[app.pageIndex]
-        sub: app.pageSubs[app.pageIndex]
+
       }
 
       StackLayout {
+        enabled: !app.saving
         currentIndex: app.pageIndex
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.leftMargin: 24
-        Layout.rightMargin: 24
-        Layout.topMargin: 14
+        Layout.leftMargin: 30
+        Layout.rightMargin: 30
+        Layout.topMargin: 22
 
         AppearancePage {}
         BehaviorPage {}
@@ -66,14 +67,15 @@ Window {
 
       RowLayout {
         Layout.fillWidth: true
-        Layout.leftMargin: 20
-        Layout.rightMargin: 20
+        Layout.leftMargin: 30
+        Layout.rightMargin: 30
         Layout.topMargin: 12
         Layout.bottomMargin: 14
         spacing: 10
 
         Btn {
           text: "恢复默认"
+          quiet: true
           enabled: !app.saving
           onClicked: app.restoreDefaults()
         }
@@ -89,6 +91,7 @@ Window {
 
         Btn {
           text: "取消"
+          quiet: true
           enabled: !app.saving
           onClicked: window.close()
         }
@@ -114,6 +117,7 @@ Window {
 
   Connections {
     target: app
+    function onSaved() { window.close() }
     function onToast(text) { toast.show(text) }
   }
 

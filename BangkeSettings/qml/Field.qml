@@ -8,7 +8,7 @@ Rectangle {
   id: field
   property bool focused: false
   implicitWidth: 96
-  implicitHeight: 26
+  implicitHeight: Theme.controlHeight
   radius: Theme.fieldRadius
   color: Theme.field
   border.width: 1

@@ -1,0 +1,52 @@
+cmake_minimum_required(VERSION 3.21)
+project(BangkeSettingsTests LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_AUTOMOC ON)
+find_package(Qt6 REQUIRED COMPONENTS Core Network Gui Widgets)
+enable_testing()
+add_executable(updatechecker_test updatechecker_test.cpp ../update/updatechecker.cpp ../update/updatechecker.h)
+target_include_directories(updatechecker_test PRIVATE ..)
+target_link_libraries(updatechecker_test PRIVATE Qt6::Core Qt6::Network)
+if(MSVC)
+  target_compile_options(updatechecker_test PRIVATE /utf-8)
+endif()
+add_test(NAME updatechecker COMMAND updatechecker_test)
+if(WIN32)
+  add_executable(aimodel_test aimodel_test.cpp ../models/AiModel.cpp ../models/AiModel.h
+                 ../models/SwitcherModel.cpp ../models/SwitcherModel.h)
+  target_include_directories(aimodel_test PRIVATE .. ../../include ../../librime/include)
+  target_link_libraries(aimodel_test PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets "${CMAKE_CURRENT_SOURCE_DIR}/../../lib64/rime.lib")
+  target_compile_options(aimodel_test PRIVATE /utf-8)
+  add_test(NAME aimodel COMMAND aimodel_test)
+endif()
+
+add_executable(coloropacity_test coloropacity_test.cpp)
+target_include_directories(coloropacity_test PRIVATE ../../include)
+add_test(NAME coloropacity COMMAND coloropacity_test)
+
+# Exercise the production QML component with real hover and keyboard events.
+find_package(Qt6 REQUIRED COMPONENTS Quick QuickTest Qml)
+qt_add_executable(combo_ui_test combo_ui_test.cpp)
+set(_combo_qml ../qml/Theme.qml ../qml/Txt.qml ../qml/Field.qml
+    ../qml/Hairline.qml ../qml/rows/RowShell.qml ../qml/rows/ComboRow.qml
+    ../qml/Sidebar.qml ../qml/NavIcon.qml ../qml/preview/MiniPanel.qml)
+foreach(_file IN LISTS _combo_qml)
+  get_filename_component(_name "${_file}" NAME)
+  set_source_files_properties("${_file}" PROPERTIES QT_RESOURCE_ALIAS "${_name}")
+endforeach()
+set_source_files_properties(../qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+qt_add_qml_module(combo_ui_test URI Bangke.Pages RESOURCE_PREFIX /qt/qml NO_CACHEGEN
+                 QML_FILES ${_combo_qml})
+qt_add_resources(combo_ui_test appicon PREFIX "/" BASE ../../resource
+                 FILES ../../resource/bangke-appicon.png)
+target_link_libraries(combo_ui_test PRIVATE Qt6::QuickTest Qt6::Quick Qt6::Qml)
+target_compile_definitions(combo_ui_test PRIVATE
+  QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml")
+add_test(NAME combo_ui COMMAND combo_ui_test)
+get_filename_component(_qt_prefix "${Qt6_DIR}/../../.." ABSOLUTE)
+set_tests_properties(combo_ui PROPERTIES ENVIRONMENT
+  "QT_PLUGIN_PATH=${_qt_prefix}/plugins;QML_IMPORT_PATH=${_qt_prefix}/qml;QT_QUICK_CONTROLS_STYLE=Basic;QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+
+if(WIN32)
+  set_property(TEST combo_ui APPEND PROPERTY ENVIRONMENT "QT_QPA_FONTDIR=$ENV{WINDIR}/Fonts")
+endif()

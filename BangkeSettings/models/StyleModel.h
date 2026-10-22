@@ -55,6 +55,7 @@ class StyleControlModel : public QAbstractListModel {
   int spacingFloor(const QString& key, bool horizontal) const;
   // 只写变了的,返回是否有改动
   bool save(UIStyleSettings& settings);
+  void markSaved();
   // 草稿回到出厂值(仍需 save 才落盘;init 快照不动)
   void resetDefaults();
 
@@ -146,6 +147,7 @@ class StyleModel : public QObject {
   // 首次进入才载;载入后不重读,草稿跨页保持
   Q_INVOKABLE void load();
   bool save();
+  bool saveSucceeded() const { return saveSucceeded_; }
   // 恢复默认:草稿回到出厂值(仍需保存才落盘)
   Q_INVOKABLE void resetDefaults();
 
@@ -155,6 +157,7 @@ class StyleModel : public QObject {
   void previewChanged();
 
  private:
+  bool saveSucceeded_ = true;
   void updatePreview();
   int indexOfScheme(const QString& id) const;
 

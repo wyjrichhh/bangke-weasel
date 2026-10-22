@@ -53,6 +53,7 @@ class GeneralModel : public QObject {
   // 首次进入才载;载入后不重读,草稿跨页保持
   Q_INVOKABLE void load();
   bool save();
+  bool saveSucceeded() const { return saveSucceeded_; }
   // 恢复默认:草稿回到出厂值(仍需保存才落盘)
   Q_INVOKABLE void resetDefaults();
 
@@ -60,6 +61,7 @@ class GeneralModel : public QObject {
   void changed();
 
  private:
+  bool saveSucceeded_ = true;
   RimeLeversApi* api_ = nullptr;
   RimeCustomSettings* settings_ = nullptr;
   // 注释显示/托盘/通知是 weasel 样式键,经 UIStyleSettings 读合并默认值
@@ -70,7 +72,7 @@ class GeneralModel : public QObject {
   int pageSize_ = 5;
   QString shiftL_ = QStringLiteral("commit_code");
   QString shiftR_ = QStringLiteral("commit_code");
-  bool commentHints_ = true;
+  bool commentHints_ = false;
   QString notificationsMode_ = QStringLiteral("never");
 
   // 载入时的原值(Shift 空串 = custom yaml 无此键);保存只写有变化的键

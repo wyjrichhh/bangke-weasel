@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <string>
 #include <BangkeUtility.h>
+#include <BangkeModelFiles.h>
 
 fs::path BangkeUserDataPath() {
   WCHAR _path[MAX_PATH] = {0};
@@ -63,6 +64,7 @@ int BangkeEnsureUserSeeds() {
   // 宽字面量经 wtou8 落盘:窄字面量受源文件编码影响,不冒险
   static const wchar_t kAiWiringYaml[] =
       L"patch:\n"
+      L"  schema/name: 蚌壳-明月\n"
       L"  # ai-predict: translator 必须列首位(MergedTranslation::Elect 顺序),\n"
       L"  # 因此整列重写朙月拼音原生 translator 并在最前加 ai_predict_translator\n"
       L"  engine/translators:\n"
@@ -121,6 +123,7 @@ int BangkeEnsureUserSeeds() {
   // 雾凇:translator 链整列重写(明月同款纪律),仅缺文件时写入
   static const wchar_t kIceWiringYaml[] =
       L"patch:\n"
+      L"  schema/name: 蚌壳-雾凇\n"
       L"  # ai-predict: translator 必须列首位(MergedTranslation::Elect 顺序)\n"
       L"  engine/translators:\n"
       L"    - ai_predict_translator\n"
@@ -162,15 +165,9 @@ int BangkeEnsureUserSeeds() {
     o << wtou8(kIceWiringYaml);
   }
 
-  // 模型随安装器铺在安装根目录 predict_models(与 data\ 平级);
-  // 首部署拷入用户目录,按哨兵文件判缺,不重复拷
-  const std::filesystem::path install_root = BangkeSharedDataPath().parent_path();
-  const std::filesystem::path src = install_root / L"predict_models";
-  const std::filesystem::path dst = user_dir / L"predict_models";
-  if (std::filesystem::exists(src / L"zh-base-ct2-int8", ec) &&
-      !std::filesystem::exists(dst / L"zh-base-ct2-int8", ec)) {
-    std::filesystem::copy(src, dst, std::filesystem::copy_options::recursive,
-                          ec);
-  }
-  return 0;
+  // Repair missing/empty files from an interrupted first-run copy, while
+  // retaining nonempty user files and any separately selected model directory.
+  const auto source = BangkeSharedDataPath().parent_path() / L"predict_models" / L"zh-base-ct2-int8";
+  const auto destination = user_dir / L"predict_models" / L"zh-base-ct2-int8";
+  return bangke::StageMissingModelFiles(source, destination) ? 1 : 0;
 }

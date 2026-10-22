@@ -2,6 +2,7 @@
 
 #include <windows.h>
 #include <cassert>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -17,6 +18,13 @@
 #pragma warning(default : 4005)
 
 #include <set>
+
+static std::wstring SystemTsfPath() {
+  wchar_t directory[MAX_PATH] = {};
+  const UINT length = GetSystemDirectoryW(directory, MAX_PATH);
+  if (!length || length >= MAX_PATH) return {};
+  return std::wstring(directory) + L"\\bangke.dll";
+}
 
 static void CreateFileIfNotExist(std::string filename) {
   std::filesystem::path file_path = BangkeUserDataPath() / u8tow(filename);
@@ -177,18 +185,16 @@ int Configurator::UpdateWorkspace(bool report_errors) {
   if (client.Connect())
     client.StartMaintenance();
 
-  {
-    RimeApi* rime = rime_get_api();
-    MigrateColorSchemes();
-    rime->deploy();
-    rime->deploy_config_file("weasel.yaml", "config_version");
-  }
+  RimeApi* rime = rime_get_api();
+  MigrateColorSchemes();
+  const bool deployed = rime->deploy();
+  const bool styled = rime->deploy_config_file("weasel.yaml", "config_version");
 
   CloseHandle(hMutex);
 
   if (client.Connect())
     client.EndMaintenance();
-  return 0;
+  return deployed && styled ? 0 : 2;
 }
 
 // 轻量生效:样式/行为类改动 = 只合并 weasel 配置 + 服务端热重载。
@@ -198,7 +204,8 @@ int Configurator::UpdateWorkspace(bool report_errors) {
 // 方案列表/AI 配置影响 schema 编译,仍走 UpdateWorkspace 全量部署
 int Configurator::ReloadService() {
   RimeApi* rime = rime_get_api();
-  rime->deploy_config_file("weasel.yaml", "config_version");
+  if (!rime->deploy_config_file("weasel.yaml", "config_version"))
+    return 2;
   bangke::Client client;
   if (!client.Connect())
     return 1;
@@ -293,38 +300,24 @@ int Configurator::EnsureInputMethodRegistered(bool setDefault) {
 
 int Configurator::CleanupResidue() {
   // 静态：勿依赖实例状态（构造器会写用户目录，SYSTEM 下路径错误）
-  // 被应用进程加载的 TSF dll 删不掉时转由下次重启删除；BangkeServer 自启键
-  // 仅在目标文件已成幽灵时移除，避免误伤共存的官方小狼毫
+  // 被应用进程加载的 TSF dll 删不掉时转由下次重启删除。
+  // 本产品的自启动注册由 MSI 移除，不修改其他输入法的注册。
   // TSF 机器级注册(DllRegisterServer 写入 HKLM CTF\TIP)卸载无人反注册,一并清
   {
     HKEY ctf = nullptr;
     if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\CTF\\TIP", 0,
-                      DELETE, &ctf) == ERROR_SUCCESS) {
+                      DELETE | KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE | KEY_SET_VALUE, &ctf) == ERROR_SUCCESS) {
       RegDeleteTreeW(
           ctf, L"{9D44BD49-B647-4010-9ADC-16DA253F5CCA}");
       RegCloseKey(ctf);
     }
   }
-  const wchar_t* residues[] = {L"C:\\Windows\\System32\\bangke.dll",
-                               L"C:\\Windows\\System32\\bangke.dll.old"};
-  for (const wchar_t* f : residues) {
-    if (GetFileAttributesW(f) == INVALID_FILE_ATTRIBUTES)
-      continue;
-    if (!DeleteFileW(f))
-      MoveFileExW(f, nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
-  }
-
-  HKEY run = nullptr;
-  if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
-                    L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", 0,
-                    KEY_QUERY_VALUE | KEY_SET_VALUE, &run) == ERROR_SUCCESS) {
-    wchar_t val[1024] = {0};
-    DWORD sz = sizeof(val);
-    if (RegQueryValueExW(run, L"WeaselServer", nullptr, nullptr, (LPBYTE)val, &sz) ==
-            ERROR_SUCCESS &&
-        GetFileAttributesW(val) == INVALID_FILE_ATTRIBUTES)
-      RegDeleteValueW(run, L"WeaselServer");
-    RegCloseKey(run);
+  const std::wstring tsf = SystemTsfPath();
+  if (tsf.empty()) return 1;
+  for (const auto& file : {tsf, tsf + L".old"}) {
+    if (GetFileAttributesW(file.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
+    if (!DeleteFileW(file.c_str()))
+      MoveFileExW(file.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
   }
   return 0;
 }
@@ -333,18 +326,15 @@ int Configurator::ClearPendingDeletes() {
   // 静态：勿依赖实例状态（构造器会写用户目录，SYSTEM 下路径错误）
   // PFRO 条目可能带 "*N"/"!" 等类型前缀（如 "*1\??\C:\..."），按 "\??\" 起始的
   // 路径主体比对
-  static const wchar_t* kProductFiles[] = {
-      L"\\??\\C:\\Windows\\System32\\bangke.dll",
-      L"\\??\\C:\\Windows\\System32\\bangke.dll.old",
-  };
-  auto isOurPath = [](const std::wstring& e) {
+  const std::wstring tsf = SystemTsfPath();
+  if (tsf.empty()) return 1;
+  const std::vector<std::wstring> productFiles = {L"\\??\\" + tsf, L"\\??\\" + tsf + L".old"};
+  auto isOurPath = [&productFiles](const std::wstring& e) {
     const size_t at = e.find(L"\\??\\");
-    if (at == std::wstring::npos)
-      return false;
+    if (at == std::wstring::npos) return false;
     const std::wstring body = e.substr(at);
-    for (const wchar_t* f : kProductFiles)
-      if (_wcsicmp(body.c_str(), f) == 0)
-        return true;
+    for (const auto& file : productFiles)
+      if (_wcsicmp(body.c_str(), file.c_str()) == 0) return true;
     return false;
   };
   const wchar_t* kSessionMgr =
@@ -355,8 +345,9 @@ int Configurator::ClearPendingDeletes() {
     return 0;
   wchar_t buf[32768] = {0};
   DWORD sz = sizeof(buf);
-  if (RegQueryValueExW(key, L"PendingFileRenameOperations", nullptr, nullptr,
-                       (LPBYTE)buf, &sz) != ERROR_SUCCESS) {
+  DWORD type = 0;
+  if (RegQueryValueExW(key, L"PendingFileRenameOperations", nullptr, &type,
+                       (LPBYTE)buf, &sz) != ERROR_SUCCESS || type != REG_MULTI_SZ || sz % sizeof(wchar_t)) {
     RegCloseKey(key);
     return 0;
   }
@@ -367,7 +358,9 @@ int Configurator::ClearPendingDeletes() {
     const size_t total = sz / sizeof(wchar_t);
     size_t pos = 0;
     while (pos < total) {
-      const std::wstring e(buf + pos);
+      const auto end = std::find(buf + pos, buf + total, L'\0');
+      if (end == buf + total) { RegCloseKey(key); return 1; }
+      const std::wstring e(buf + pos, end);
       entries.push_back(e);
       pos += e.size() + 1;
     }
@@ -378,7 +371,7 @@ int Configurator::ClearPendingDeletes() {
   std::vector<std::wstring> kept;
   // PFRO 按 (源, 目标) 成对排列，目标为空串表示删除；整对取舍，绝不能拆散别人的对
   for (size_t i = 0; i < entries.size(); i += 2) {
-    if (isOurPath(entries[i])) {
+    if (i + 1 < entries.size() && entries[i + 1].empty() && isOurPath(entries[i])) {
       changed = true;
       continue;
     }

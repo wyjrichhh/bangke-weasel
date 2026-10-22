@@ -8,18 +8,23 @@ if not defined BANGKE_ROOT set BANGKE_ROOT=%CD%
 if not defined VERSION_MAJOR set VERSION_MAJOR=0
 if not defined VERSION_MINOR set VERSION_MINOR=1
 if not defined VERSION_PATCH set VERSION_PATCH=0
-rem 4th version field = build timestamp (HHmm): every build gets a
-rem unique MSI version, so a re-pack can never be "same version,
-rem different product" - the upgrade chain always completes and the
-rem TSF registration survives (keep this file ASCII-only).
-for /f "tokens=1-2 delims=:" %%a in ("%TIME: =0%") do set BUILD_STAMP=%%a%%b
-set BANGKE_VERSION=%VERSION_MAJOR%.%VERSION_MINOR%.%VERSION_PATCH%.%BUILD_STAMP%
+rem Match the build field embedded in the binaries. MSI upgrade matching
+rem ignores field four; AllowSameVersionUpgrades handles repackaged products.
+rem Release changes must increment VERSION_PATCH and rebuild all binaries.
+if not defined BANGKE_BUILD set BANGKE_BUILD=0
+if not defined RELEASE_BUILD (
+  for /f "delims=" %%i in ('git rev-list HEAD --count') do set BANGKE_BUILD=%%i
+)
+set BANGKE_VERSION=%VERSION_MAJOR%.%VERSION_MINOR%.%VERSION_PATCH%.%BANGKE_BUILD%
 
 set WIXEXE=%USERPROFILE%\.dotnet\tools\wix.exe
 if not exist "%WIXEXE%" (
   echo Error: wix not found. Install with: dotnet tool install --global wix
   exit /b 1
 )
+
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stage-data.ps1 -DataDir output\data
+if errorlevel 1 goto error
 
 powershell -NoProfile -ExecutionPolicy Bypass -File installer\harvest.ps1 -OutputDir output -OutFile installer\Files.wxs
 if errorlevel 1 goto error

@@ -9,7 +9,8 @@ if not defined VERSION_MAJOR set VERSION_MAJOR=0
 if not defined VERSION_MINOR set VERSION_MINOR=1
 if not defined VERSION_PATCH set VERSION_PATCH=0
 if not defined BANGKE_BUILD set BANGKE_BUILD=0
-rem 非发布构建用 git 计数作第四段,保证同版本号重打也能覆盖(与 build.bat 同源)
+rem Non-release builds use the same git-count label as build.bat.
+rem This is a binary build label; MSI upgrades compare only the first three fields.
 if not defined RELEASE_BUILD (
   git --version >nul 2>&1
   if not errorlevel 1 (

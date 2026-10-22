@@ -1,6 +1,7 @@
 #include "SwitcherModel.h"
 
 #include <cstring>
+#include <algorithm>
 #include <set>
 #include <string>
 
@@ -44,7 +45,9 @@ bool SwitcherModel::setData(const QModelIndex& index, const QVariant& value,
       index.row() >= (int)rows_.size())
     return false;
   rows_[index.row()].enabled = value.toBool();
-  modified_ = true;
+  modified_ = std::any_of(rows_.begin(), rows_.end(), [](const auto& row) {
+    return row.enabled != row.savedEnabled;
+  });
   const QModelIndex idx = this->index(index.row());
   emit dataChanged(idx, idx, {EnabledRole});
   return true;
@@ -104,6 +107,7 @@ void SwitcherModel::populate() {
     rec.id = QString::fromUtf8(item.schema_id);
     rec.name = QString::fromStdString(item.name);
     rec.enabled = checked;
+    rec.savedEnabled = checked;
     rows_.push_back(rec);
   };
   std::set<void*> recruited;
@@ -135,6 +139,7 @@ void SwitcherModel::populate() {
 }
 
 bool SwitcherModel::save() {
+  saveSucceeded_ = true;
   if (!modified_ || !settings_ || rows_.empty())
     return false;
   std::vector<const char*> selection;
@@ -144,6 +149,7 @@ bool SwitcherModel::save() {
     selection.push_back(api_->get_schema_id(rec.info));
   }
   if (selection.empty()) {
+    saveSucceeded_ = false;
     emit info(QStringLiteral(u"蚌壳拼音"),
               QStringLiteral(u"至少要选用一项方案。"));
     return false;
@@ -151,5 +157,11 @@ bool SwitcherModel::save() {
   // 重读再写:与 GeneralModel 共写 default.custom.yaml,避免旧树覆写对方
   api_->load_settings((RimeCustomSettings*)settings_);
   api_->select_schemas(settings_, selection.data(), (int)selection.size());
-  return api_->save_settings((RimeCustomSettings*)settings_);
+  saveSucceeded_ = api_->save_settings((RimeCustomSettings*)settings_);
+  if (saveSucceeded_) {
+    modified_ = false;
+    for (auto& row : rows_)
+      row.savedEnabled = row.enabled;
+  }
+  return saveSucceeded_;
 }

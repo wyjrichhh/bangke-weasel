@@ -2,6 +2,9 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QSaveFile>
 #include <QRegularExpression>
 
 #include <BangkeUtility.h>
@@ -75,7 +78,7 @@ QString blockValue(const QString& block, const QString& key) {
     return QString();
   QString value = m.captured(1).trimmed();
   const int hash = value.indexOf(QLatin1Char('#'));
-  if (hash >= 0)
+  if (hash >= 0 && !value.startsWith(QLatin1Char('\'')) && !value.startsWith(QLatin1Char('"')))
     value = value.left(hash).trimmed();
   return value;
 }
@@ -409,6 +412,14 @@ AiModel::AIPredict AiModel::readPredict(const QString& schemaId) const {
     return ok ? v : fallback;
   };
 
+  const QString storedPath = blockValue(block, QStringLiteral("model_path"));
+  if (!storedPath.isEmpty()) {
+    p.modelPath = storedPath;
+    if (p.modelPath.startsWith(QLatin1Char('\'')) && p.modelPath.endsWith(QLatin1Char('\'')))
+      p.modelPath = p.modelPath.mid(1, p.modelPath.size() - 2).replace(QStringLiteral("''"), QStringLiteral("'"));
+    else if (p.modelPath.startsWith(QLatin1Char('"')) && p.modelPath.endsWith(QLatin1Char('"')))
+      p.modelPath = p.modelPath.mid(1, p.modelPath.size() - 2);
+  }
   p.enabled = boolean("enabled", p.enabled);
   p.filterPunctuation = boolean("filter_punctuation", p.filterPunctuation);
   p.aiOnly = boolean("ai_only", p.aiOnly);
@@ -434,18 +445,6 @@ void AiModel::showSchema(const QString& schemaId) {
   if (!predict_.count(schemaId))
     predict_[schemaId] = AIPredict();
 
-  QFile f(schemaCustomYaml(schemaId));
-  QString modelPath;
-  if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-    int start = 0, end = 0;
-    const QString yaml = QString::fromUtf8(f.readAll());
-    f.close();
-    if (aiBlockRange(yaml, &start, &end))
-      modelPath =
-          blockValue(yaml.mid(start, end - start), QStringLiteral("model_path"));
-  }
-  modelPath_ = modelPath;
-
   emit currentSchemaChanged();
   emit changed();
 }
@@ -457,10 +456,12 @@ void AiModel::setCurrentSchema(const QString& schemaId) {
 }
 
 void AiModel::load() {
+  if (loaded_)
+    return;
+  loaded_ = true;
   predict_.clear();
   schemas_.clear();
   schemaNames_.clear();
-  modelPath_.clear();
 
   const QStringList schemas = aiWiredSchemas();
   for (const QString& id : schemas) {
@@ -540,6 +541,7 @@ AiModel::AlphabetEdit AiModel::planAiOnlyAlphabet(const QString& schemaId,
 }
 
 bool AiModel::save() {
+  saveSucceeded_ = true;
   if (currentSchema_.isEmpty())
     return false;
 
@@ -558,15 +560,23 @@ bool AiModel::save() {
     if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
       yaml = QString::fromUtf8(f.readAll());
       f.close();
+    } else {
+      saveSucceeded_ = false;
+      emit info(QStringLiteral(u"保存失败"), QStringLiteral(u"无法读取 %1").arg(f.fileName()));
+      continue;
     }
     int start = 0, end = 0;
-    if (!aiBlockRange(yaml, &start, &end))
-      continue;  // 没有 ai_predict 块就不写(避免在错误位置追加)
+    if (!aiBlockRange(yaml, &start, &end)) {
+      saveSucceeded_ = false;
+      emit info(QStringLiteral(u"保存失败"), QStringLiteral(u"%1 的 AI 配置块已变更，请检查文件。").arg(f.fileName()));
+      continue;
+    }
 
     const auto yn = [](bool v) {
       return v ? QStringLiteral("true") : QStringLiteral("false");
     };
     QString block = yaml.mid(start, end - start);
+    setBlockKey(block, QStringLiteral("model_path"), yamlScalar(p.modelPath));
     setBlockKey(block, QStringLiteral("enabled"), yn(p.enabled));
     setBlockKey(block, QStringLiteral("filter_punctuation"),
                 yn(p.filterPunctuation));
@@ -604,11 +614,50 @@ bool AiModel::save() {
     // 只写真的动过的方案:其余方案的文件保持原样,包括它们的注释
     if (yaml == before)
       continue;
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+    QSaveFile output(schemaCustomYaml(id));
+    const QByteArray encoded = yaml.toUtf8();
+    if (!output.open(QIODevice::WriteOnly) || output.write(encoded) != encoded.size() || !output.commit()) {
+      saveSucceeded_ = false;
+      emit info(QStringLiteral(u"保存失败"), QStringLiteral(u"无法写入 %1").arg(output.fileName()));
       continue;
-    f.write(yaml.toUtf8());
-    f.close();
+    }
     changed = true;
   }
   return changed;
+}
+
+void AiModel::chooseModel() {
+  if (currentSchema_.isEmpty()) return;
+  const QDir user(QString::fromStdWString(BangkeUserDataPath().wstring()));
+  const QString folder = QFileDialog::getExistingDirectory(nullptr,
+      QStringLiteral(u"选择 CTranslate2 模型目录"), user.absoluteFilePath(modelPath()));
+  if (!folder.isEmpty()) selectModelPath(folder);
+}
+
+bool AiModel::selectModelPath(const QString& folder) {
+  if (currentSchema_.isEmpty() || folder.isEmpty()) return false;
+  QStringList missing;
+  for (const auto& name : {QStringLiteral("model.bin"), QStringLiteral("tokenizer.json"),
+                           QStringLiteral("shared_vocabulary.json")}) {
+    const QFileInfo file(QDir(folder).filePath(name));
+    if (!file.isFile() || !file.isReadable() || file.size() == 0) missing << name;
+  }
+  if (!missing.isEmpty()) {
+    emit info(QStringLiteral(u"模型不可用"),
+              QStringLiteral(u"目录中缺少有效文件：%1").arg(missing.join(QStringLiteral(", "))));
+    return false;
+  }
+  if (auto* p = currentEdit()) {
+    p->modelPath = QDir::fromNativeSeparators(QFileInfo(folder).absoluteFilePath());
+    emit changed();
+    return true;
+  }
+  return false;
+}
+
+void AiModel::resetModel() {
+  if (auto* p = currentEdit()) {
+    p->modelPath = AIPredict().modelPath;
+    emit changed();
+  }
 }

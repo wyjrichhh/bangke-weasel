@@ -6,6 +6,7 @@
 #include <BangkeConstants.h>
 #include <BangkeUtility.h>
 #include <BangkeNativeTheme.h>
+#include <BangkeColorOpacity.h>
 
 #include <filesystem>
 #include <fstream>
@@ -695,7 +696,8 @@ void BangkeRimeHandler::AiPumpArm(BangkeSessionId ipc_id) {
     return;
   m_ai_pump_ipc_id = ipc_id;
   m_ai_pump_deadline = GetTickCount() + kAiPumpTimeoutMs;
-  SetTimer(m_event_wnd, kAiPumpTimerId, kAiPumpIntervalMs, nullptr);
+  m_ai_pump_interval = kAiPumpIntervalMs;
+  SetTimer(m_event_wnd, kAiPumpTimerId, m_ai_pump_interval, nullptr);
 }
 
 void BangkeRimeHandler::AiPumpTick() {
@@ -712,7 +714,7 @@ void BangkeRimeHandler::AiPumpTick() {
   // find，避免查询把幽灵会话坐实
   auto it = m_session_status_map.find(m_ai_pump_ipc_id);
   if (m_ai_pump_ipc_id == 0 || it == m_session_status_map.end() ||
-      !it->second.session_id || GetTickCount() >= m_ai_pump_deadline) {
+      !it->second.session_id || static_cast<LONG>(GetTickCount() - m_ai_pump_deadline) >= 0) {
     _StopAiPump();
     return;
   }
@@ -742,6 +744,10 @@ void BangkeRimeHandler::AiPumpTick() {
   if (!_IsAiPending(session_id)) {
     _PushAiSnapshot(session_id);
     _StopAiPump();
+  } else {
+    // Compose can be expensive for long input. Back off 150 -> 300 -> 600 ms.
+    m_ai_pump_interval = (std::min)(m_ai_pump_interval * 2, UINT(600));
+    SetTimer(m_event_wnd, kAiPumpTimerId, m_ai_pump_interval, nullptr);
   }
 }
 
@@ -1800,21 +1806,11 @@ static void _ApplySchemeFonts(RimeConfig* config,
   }
 }
 
-// style/alpha = mac alphaValue 的整窗语义:记入 window_alpha,由面板
-// 在 UpdateLayeredWindow 的常量 alpha 应用 —— 文字随背景一起半透明,
-// 下层内容可见。不再乘背景色(那只让背景变灰,文字仍不透明,观感是
-// 「变暗」而非「透下层」)
+// 对齐 macOS alphaValue：先绘制背景、高亮和文字，再对整窗统一透明。
 static void _ApplyStyleAlpha(RimeConfig* config, UIStyle& style) {
-  double alpha = 1.0;
-  if (!rime_api->config_get_double(config, "style/alpha", &alpha))
-    return;
-  if (alpha >= 1.0) {
-    style.window_alpha = 255;
-    return;
-  }
-  if (alpha < 0.0)
-    alpha = 0.0;
-  style.window_alpha = (int)(alpha * 255.0);
+  double opacity = 1.0;
+  rime_api->config_get_double(config, "style/alpha", &opacity);
+  style.window_alpha = bangke::WindowOpacity(opacity);
 }
 
 // load color configs to style, by "style/color_scheme" or specific scheme name

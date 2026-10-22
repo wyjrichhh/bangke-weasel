@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import Bangke.Pages
 
 // 设置行的公共骨架(mac LabeledContent):标签(+问号说明)居左,控件贴右缘
@@ -14,34 +15,24 @@ Item {
   implicitHeight: Theme.rowHeight
 
   Hairline {
-    x: 16
-    width: parent.width - 16
+    x: 0
+    width: parent.width
     anchors.top: parent.top
     visible: shell.showDivider
     color: Theme.hairSoft
   }
 
-  Row {
-    id: labels
-    spacing: 4
+  Txt {
+    id: labelText
     anchors.left: parent.left
     anchors.right: parent.right
-    anchors.rightMargin: shell.controlWidth + 14
+    anchors.rightMargin: shell.controlWidth + 18
     anchors.verticalCenter: parent.verticalCenter
-
-    Txt {
-      text: shell.label
-      width: Math.min(labels.width - (hintIcon.visible ? hintIcon.width + 4 : 0),
-                      implicitWidth)
-      anchors.verticalCenter: parent.verticalCenter
-      elide: Text.ElideRight
-    }
-
-    HintIcon {
-      id: hintIcon
-      hint: shell.helper
-      visible: shell.helper.length > 0
-      anchors.verticalCenter: parent.verticalCenter
-    }
+    text: shell.label
+    elide: Text.ElideRight
+    HoverHandler { id: hover }
+    ToolTip.visible: hover.hovered && (shell.helper.length > 0 || labelText.truncated)
+    ToolTip.delay: 600
+    ToolTip.text: shell.helper.length > 0 ? shell.helper : shell.label
   }
 }

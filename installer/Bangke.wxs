@@ -2,11 +2,10 @@
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
   <!--
-    ProductCode 保持每次构建自动生成(MajorUpgrade 升级链依赖它)。
-    「同版本号重打包」的注册丢失问题由 build_msi.bat 解决:MSI Version
-    第四段填构建时间戳,任何两个包的版本必然不同,永远走正常升级链。
-    (曾试过固定 ProductCode —— 同 ProductCode 的更高版本直接装会报
-    1638「该产品的另一版本已安装」,把正常升级堵死,已撤销。)
+    ProductCode 每次打包生成，UpgradeCode 稳定。
+    MSI 的升级比较只看前三段；AllowSameVersionUpgrades 用于重新打包。
+    第四段仅与二进制构建标签保持一致，不能当作唯一或递增的升级版本。
+    正式功能更新必须升 VERSION_PATCH 并重编全部二进制。
   -->
   <Package Name="蚌壳拼音"
            Codepage="65001"
@@ -27,7 +26,20 @@
 
     <Icon Id="AppIcon.ico" SourceFile="$(var.ResourceDir)\bangke.ico" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
-    <Property Id="ARPHELPLINK" Value="https://rime.im/docs/" />
+    <!-- Repairs use this distribution EXE, which supplies and recaches its MSI.
+         The Windows cached MSI cannot recover payload from deleted temp dirs. -->
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+    <Property Id="ARPHELPLINK" Value="https://shellim.openbankai.com/" />
+
+    <!--
+      这里【不能】用 REINSTALLMODE=amus 之类强制全量重装来绕开「版本不更高就
+      跳过」:那会把覆盖安装变成同版本重装,而本项目历史上正是被这条路坑过
+      —— 重装链会把 TSF 注册(regsvr32 那步)一起丢掉,输入法直接从语言栏消失,
+      回滚还留下一条重启删除 System32\bangke.dll 的记录。0.4.44 实测复现。
+      正确做法是让每个包的 dll 版本号真的变大:先改 env.bat 的 VERSION_PATCH,
+      再跑 bk-rebuild(它才会把新版本戳盖进所有二进制),然后才打包。
+    -->
 
     <!--
       目录：ProgramFiles\Bangke Pinyin（BangkeRoot）；
@@ -58,7 +70,7 @@
       <RegistryValue Root="HKLM" Key="Software\Bangke" Name="ServerExecutable"
                      Value="BangkeServer.exe" Type="string" />
       <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run"
-                     Name="BangkeServer" Value="[INSTALLDIR]BangkeServer.exe" Type="string" />
+                     Name="BangkeServer" Value="&quot;[INSTALLDIR]BangkeServer.exe&quot;" Type="string" />
     </Component>
 
     <!-- 开始菜单 -->
@@ -103,14 +115,14 @@
                   Return="check" Execute="deferred" Impersonate="yes" />
 
     <!-- 装完即用：以安装用户身份 fire-and-forget 拉起服务（cmd start 避免 CA 等待常驻进程） -->
-    <CustomAction Id="StartServer" Directory="INSTALLDIR"
-                  ExeCommand="&quot;[System64Folder]explorer.exe&quot; &quot;[INSTALLDIR]BangkeServer.exe&quot;"
+    <CustomAction Id="StartServer" Directory="WindowsFolder"
+                  ExeCommand="&quot;[WindowsFolder]explorer.exe&quot; &quot;[INSTALLDIR]BangkeServer.exe&quot;"
                   Return="ignore" Execute="deferred" Impersonate="yes" />
 
     <!--
       卸载残留清理：在 RemoveFiles 之前跑（此时 BangkeSettings.exe 尚在）。
       被应用进程加载的 System32\bangke.dll 删不掉时转由下次重启删除；
-      旧版遗留的 BangkeServer 自启键仅在目标已是幽灵时移除，不影响共存的官方小狼毫。
+      本产品自启注册由 MSI 维护，清理不修改其他输入法。
     -->
     <CustomAction Id="Cleanup" Directory="INSTALLDIR"
                   ExeCommand="&quot;[INSTALLDIR]BangkeSettings.exe&quot; /cleanup"
@@ -132,6 +144,14 @@
     <util:CloseApplication Id="CloseServer"
                            Target="BangkeServer.exe"
                            CloseMessage="no"
+                           RebootPrompt="no"
+                           PromptToContinue="no"
+                           TerminateProcess="1"
+                           Timeout="2" />
+
+    <util:CloseApplication Id="CloseUpdateMonitor"
+                           Target="BangkeSettings.exe"
+                           CloseMessage="yes"
                            RebootPrompt="no"
                            PromptToContinue="no"
                            TerminateProcess="1"

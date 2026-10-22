@@ -54,7 +54,8 @@ arm64x_wrapper/*.o
 arm64x_wrapper/*.dll
 arm64x_wrapper/*.ime
 arm64x_wrapper/*.lib
-arm64x_wrapper/*.exp# --- Bangke build/transfer artifacts ---
+arm64x_wrapper/*.exp
+# --- Bangke build/transfer artifacts ---
 output/
 dist/
 installer/Files.wxs
@@ -64,3 +65,8 @@ installer/Files.wxs
 /models/
 rime-ice.tar.gz
 rime-ice-x/
+
+/x64/
+/test/*/x64/
+/installer/tests/build/
+/BangkeSettings/tests/build/

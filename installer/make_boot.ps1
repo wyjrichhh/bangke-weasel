@@ -17,26 +17,16 @@ $version = $msi.BaseName -replace '^BangkeSetup-', '' -replace '-x64$', ''
 $payload = [System.Collections.Generic.List[string]]::new()
 $payload.Add("BangkeInstaller.exe")
 $payload.Add($msi.Name)
-# dxcompiler/dxil 只在 D3D12 后端下被 LoadLibrary(导入表里没有),本程序走 D3D11,
-# 所以 trim_output.ps1 会把它们从 output\ 删掉 —— 这里留着名字只是超集写法,Test-Path 会跳过
-# 设置程序改成 QML 之后还多出 Qt Quick 那一串 DLL:Qt6Qml 起手就解析 qml 树,
-# 缺一个就是启动即白屏。列的是超集,Test-Path 兜底 —— 没铺出来的自然跳过
-foreach ($n in @("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll", "Qt6Network.dll",
-                 "Qt6Qml.dll", "Qt6QmlModels.dll", "Qt6QmlWorkerScript.dll",
-                 "Qt6QmlMeta.dll", "Qt6Quick.dll", "Qt6QuickControls2.dll",
-                 "Qt6QuickControls2Impl.dll", "Qt6QuickTemplates2.dll",
-                 "Qt6QuickLayouts.dll", "Qt6QuickEffects.dll",
-                 "Qt6QuickDialogs2.dll", "Qt6QuickDialogs2QuickImpl.dll",
-                 "Qt6QuickDialogs2Utils.dll",
-                 "dxcompiler.dll", "dxil.dll")) {
-  if (Test-Path (Join-Path $output $n)) { $payload.Add($n) }
+# The bootstrap runs only the Widgets installer. Qt Quick/QML/networking
+# belongs to the installed settings app and is already carried inside the MSI.
+foreach ($n in @("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll")) {
+  $payload.Add($n)
 }
-# qml 是 Qt Quick 的模块树(QtQuick/Controls/Layouts/Effects/Dialogs...),
-# 引导壳按相对路径整棵收,漏了它 exe 里的 import 一个都解析不到
-foreach ($d in @("platforms", "styles", "imageformats", "iconengines", "tls", "networkinformation", "generic", "qml")) {
+$payload.Add("platforms\qwindows.dll")
+foreach ($d in @("styles", "imageformats", "iconengines")) {
   $p = Join-Path $output $d
   if (Test-Path $p) {
-    Get-ChildItem $p -Recurse -File | ForEach-Object {
+    Get-ChildItem $p -Recurse -File | Sort-Object FullName | ForEach-Object {
       $payload.Add($_.FullName.Substring($output.Length + 1))
     }
   }
@@ -46,7 +36,9 @@ Get-ChildItem $output -File | Where-Object {
   $_.Name -match '^(msvcp|vcruntime|vccorlib|concrt|ucrtbase)' } | ForEach-Object {
   $payload.Add($_.Name)
 }
-if ($payload -notcontains "BangkeInstaller.exe") { throw "output\BangkeInstaller.exe 缺失" }
+foreach ($rel in $payload) {
+  if (-not (Test-Path (Join-Path $output $rel) -PathType Leaf)) { throw "Required bootstrap payload missing: $rel" }
+}
 
 # ---- 生成资源脚本:IDR_MANIFEST(100) = 清单,101.. = 文件 ----
 $build = Join-Path $PSScriptRoot "BangkeBoot\build"

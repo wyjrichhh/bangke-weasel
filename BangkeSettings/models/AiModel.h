@@ -37,8 +37,8 @@ class AiModel : public QObject {
   Q_PROPERTY(int searchRange READ searchRange WRITE setSearchRange NOTIFY changed)
   Q_PROPERTY(int contextWindowSize READ contextWindowSize WRITE setContextWindowSize NOTIFY changed)
   Q_PROPERTY(int minContextPromptLength READ minContextPromptLength WRITE setMinContextPromptLength NOTIFY changed)
-  // 只读:从方案的 *.custom.yaml 里读出来给用户看
-  Q_PROPERTY(QString modelPath READ modelPath NOTIFY currentSchemaChanged)
+  // 模型选择保存在当前方案草稿中，保存并部署后生效。
+  Q_PROPERTY(QString modelPath READ modelPath NOTIFY changed)
   Q_PROPERTY(QVariantList deviceOptions READ deviceOptions CONSTANT)
   Q_PROPERTY(QVariantMap fieldRanges READ fieldRanges CONSTANT)
 
@@ -75,25 +75,32 @@ class AiModel : public QObject {
   void setContextWindowSize(int value);
   int minContextPromptLength() const;
   void setMinContextPromptLength(int value);
-  QString modelPath() const { return modelPath_; }
+  QString modelPath() const { return predictFor(currentSchema_).modelPath; }
+  Q_INVOKABLE void chooseModel();
+  bool selectModelPath(const QString& folder);
+  Q_INVOKABLE void resetModel();
 
   QVariantList deviceOptions() const;
   QVariantMap fieldRanges() const;
 
   Q_INVOKABLE void load();
   bool save();
+  bool saveSucceeded() const { return saveSucceeded_; }
   // 恢复默认:所有接 AI 方案的草稿一起回出厂值(对齐 mac 的 restoreDefaults)
   Q_INVOKABLE void resetAll();
 
  signals:
   void changed();
+  void info(const QString& title, const QString& message);
   void schemasChanged();
   void currentSchemaChanged();
 
  private:
+  bool saveSucceeded_ = true;
   // 一个方案的 AI 设置,与 ai_predict 块一一对应。默认值与插件里的同名默认值一致
   // (见 predict_translator.cc 的 LoadOptions),补丁里缺哪个键就按哪个默认走。
   struct AIPredict {
+    QString modelPath = QStringLiteral("predict_models/zh-base-ct2-int8");
     bool enabled = true;
     bool filterPunctuation = true;
     bool aiOnly = false;
@@ -136,5 +143,5 @@ class AiModel : public QObject {
   QStringList schemas_;
   QStringList schemaNames_;
   QString currentSchema_;
-  QString modelPath_;
+  bool loaded_ = false;
 };

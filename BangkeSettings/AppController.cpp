@@ -28,6 +28,10 @@ const struct {
 AppController::AppController(Configurator* configurator, bool openDictPage,
                              QObject* parent)
     : QObject(parent), configurator_(configurator) {
+  updates_ = new bangke::UpdateChecker(QStringLiteral("windows"), QStringLiteral("%1.%2.%3.%4").arg(VERSION_MAJOR).arg(VERSION_MINOR).arg(VERSION_PATCH).arg(VERSION_BUILD), this);
+  connect(updates_, &bangke::UpdateChecker::finished, this, [this](const QString& message, bool manual) {
+    if (manual) emit info(QStringLiteral("软件更新"), message);
+  });
   general_ = new GeneralModel(this);
   style_ = new StyleModel(this);
   ai_ = new AiModel(this);
@@ -38,6 +42,7 @@ AppController::AppController(Configurator* configurator, bool openDictPage,
   connect(configurator_, &Configurator::info, this, &AppController::info);
   connect(switcher_, &SwitcherModel::info, this, &AppController::info);
   connect(dict_, &DictModel::info, this, &AppController::info);
+  connect(ai_, &AiModel::info, this, &AppController::info);
 
   // 五页布局: 0=外观 1=行为 2=智能联想 3=方案与词典 4=关于
   pageIndex_ = openDictPage ? 3 : 0;
@@ -122,18 +127,33 @@ void AppController::restoreDefaults() {
 }
 
 void AppController::saveAndDeploy() {
+  if (saving_)
+    return;
   // 部署独占:词典会话握着维护握手,叠加部署会令服务端二次 Finalize
   // rime(双杀),先收掉,完事在原页重建
   dict_->setSessionActive(false);
   configurator_->EndDictSession();
 
+  bool errorReported = false;
+  const auto reporting = connect(this, &AppController::info, this,
+                                [&errorReported] { errorReported = true; });
   const bool switcherChanged = switcher_->save();
   const bool styleChanged = style_->save();
   const bool generalChanged = general_->save();
   const bool aiChanged = ai_->save();
-
-  if (!switcherChanged && !styleChanged && !generalChanged && !aiChanged) {
-    emit toast(QStringLiteral(u"没有需要保存的修改"));
+  disconnect(reporting);
+  pendingDeploy_ |= switcherChanged || styleChanged || generalChanged || aiChanged;
+  pendingFullDeploy_ |= switcherChanged || generalChanged || aiChanged;
+  if (!switcher_->saveSucceeded() || !style_->saveSucceeded() ||
+      !general_->saveSucceeded() || !ai_->saveSucceeded()) {
+    if (!errorReported)
+      emit info(QStringLiteral(u"保存失败"), QStringLiteral(u"无法写入配置，请检查用户文件夹权限后重试。"));
+    if (pageIndex_ == 3 && configurator_->BeginDictSession())
+      dict_->setSessionActive(true);
+    return;
+  }
+  if (!pendingDeploy_) {
+    emit saved();
     return;
   }
 
@@ -143,7 +163,7 @@ void AppController::saveAndDeploy() {
   // build/default.yaml,而轻量路径只摊 weasel.yaml,引擎读到的仍是出厂值
   // (Shift 选什么都一样就是这么来的)。样式类改动服务端重读即可。
   // 两类都在后台线程执行 —— 部署再久窗口也不卡
-  const bool fullDeploy = switcherChanged || aiChanged || generalChanged;
+  const bool fullDeploy = pendingFullDeploy_;
   qWarning("BKSAVE g=%d s=%d a=%d w=%d full=%d", generalChanged,
            styleChanged, aiChanged, switcherChanged, fullDeploy);
   setSaving(true);
@@ -156,17 +176,17 @@ void AppController::saveAndDeploy() {
         this,
         [this, ret] {
           setSaving(false);
-          if (ret > 1) {
-            emit info(
-                QStringLiteral(u"蚌壳拼音"),
-                QStringLiteral(u"保存失败(错误码 %1)。\n"
-                               u"配置可能写入有误,请检查用户文件夹中的 yaml 文件。")
-                    .arg(ret));
-          } else if (ret == 0) {
-            emit toast(QStringLiteral(u"已保存,输入法即刻生效"));
+          if (ret == 0) {
+            pendingDeploy_ = false;
+            pendingFullDeploy_ = false;
+            emit saved();
+          } else {
+            emit info(QStringLiteral(u"应用失败"),
+                      QStringLiteral(u"配置已保存，但尚未成功应用（错误码 %1）。请重试保存并应用。")
+                          .arg(ret));
+            if (pageIndex_ == 3 && configurator_->BeginDictSession())
+              dict_->setSessionActive(true);
           }
-          if (pageIndex_ == 3 && configurator_->BeginDictSession())
-            dict_->setSessionActive(true);
         },
         Qt::QueuedConnection);
   });

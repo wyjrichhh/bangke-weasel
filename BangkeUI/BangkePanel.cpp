@@ -243,7 +243,8 @@ void BangkePanel::_CreateLayout() {
 void BangkePanel::Refresh() {
   bool should_show_icon =
       (m_status.ascii_mode || !m_status.composing || !m_ctx.aux.empty());
-  m_candidateCount = min(m_ctx.cinfo.candies.size(), MAX_CANDIDATES_COUNT);
+  m_candidateCount = static_cast<BYTE>((std::min)(m_ctx.cinfo.candies.size(),
+                                                size_t(MAX_CANDIDATES_COUNT)));
   if (m_lastCandidateCount > 0 && m_candidateCount == 0) {
     m_sticky = false;
   }
@@ -635,28 +636,50 @@ void BangkePanel::_SnapHighlightToPanel(CRect& rect, IsToRoundStruct& rd) {
     rect.right = bg.right;
     atWindowEdge = true;
   }
+  bool topSnapped = false, bottomSnapped = false;
   if (rd.IsTopLeftNeedToRound && rd.IsTopRightNeedToRound) {
     rect.top = bg.top;
     atWindowEdge = true;
+    topSnapped = true;
   }
   if (rd.IsBottomLeftNeedToRound && rd.IsBottomRightNeedToRound) {
     rect.bottom = bg.bottom;
     atWindowEdge = true;
+    bottomSnapped = true;
   }
-  // 单行末行候选:圆角表只给左下角圆(不是「两个角都圆」),上面那条判据
-  // 落不进来,高亮按 padding 外扩后离面板底还差 margin_y - padding_y,
-  // 下沿就露出一条背景色(mac 把高亮夹到面板边界,没有这条缝)。
-  // 末行的这个差值是个定值(real_margin_y - padding_y),照它比对 ——
-  // 非末行还多着整行行高+行距,不会误判
-  const int lastRowGap =
+  // 圆角表落不进来的贴边情形:单行(编码独占一行时)首候选的高亮只给
+  // 左下角圆、右缘后面还跟着下一个候选,所以「两个角都圆」判不出它贴边,
+  // 高亮按 padding 外扩后离面板边仍差 margin_y - padding_y,边上露出一条
+  // 背景色(mac 把高亮夹到面板边界,没这条缝)。这个差值在贴边行是个定值,
+  // 照它比对即可 —— 非贴边行还多着整行行高+行距,不会误判
+  const int edgeGap =
       m_layout->real_margin_y - DPI_SCALE(m_style.hilite_padding_y);
-  if (lastRowGap >= 0 && bg.bottom - rect.bottom <= lastRowGap + 2) {
-    // 描边以面板轮廓为中心画,内侧那半个线宽压在内容区上 —— 高亮要停在
-    // 描边的内沿,否则会压住下边框(mac 的 outerBox 同样让出
-    // borderLineWidth / 2)。border_width = 0 时就是正好贴轮廓
-    rect.bottom = bg.bottom - DPI_SCALE(m_style.border) / 2;
+  // 描边以面板轮廓为中心画,内侧半个线宽压在内容区上 —— 高亮要停在描边
+  // 内沿,否则会压住边框(mac 的 outerBox 同样让出 borderLineWidth / 2)
+  const int borderInset = DPI_SCALE(m_style.border) / 2;
+  if (!topSnapped && edgeGap >= 0 && rect.top - bg.top <= edgeGap + 2) {
+    rect.top = bg.top + borderInset;
     atWindowEdge = true;
   }
+  if (!bottomSnapped && edgeGap >= 0 && bg.bottom - rect.bottom <= edgeGap + 2) {
+    rect.bottom = bg.bottom - borderInset;
+    atWindowEdge = true;
+  }
+  // 左右同理:单行(水平 snap 被跳过)时 margin_x == padding_x 会让高亮左缘
+  // 正好落在面板轮廓上,不让出半个线宽就会盖住左右边框;右缘只在候选本身
+  // 就贴着面板右缘时(例如只有一个候选)才让
+  if (horizontalLayout) {
+    if (rect.left <= bg.left + 1)
+      rect.left = bg.left + borderInset;
+    if (rect.right >= bg.right - 1)
+      rect.right = bg.right - borderInset;
+  }
+  // 兜底:高亮一律夹在面板内沿里(mac 的 expand() 就是夹到 outerBox)。
+  // padding_y 大于 margin_y 时,按 padding 外扩的高亮会顶到面板上方
+  if (rect.top < bg.top + borderInset)
+    rect.top = bg.top + borderInset;
+  if (rect.bottom > bg.bottom - borderInset)
+    rect.bottom = bg.bottom - borderInset;
   if (atWindowEdge)
     rd.Hemispherical = true;
 }

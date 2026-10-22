@@ -13,6 +13,7 @@
 #include <ShellScalingApi.h>
 #include <WinUser.h>
 #include <memory>
+#include <string>
 #include <atlstr.h>
 #pragma comment(lib, "Shcore.lib")
 CAppModule _Module;
@@ -99,6 +100,23 @@ int WINAPI _tWinMain(HINSTANCE hInstance,
   try {
     BangkeServerApp app;
     RegisterApplicationRestart(NULL, 0);
+    // The settings binary owns networking and notifications, outside the input path.
+    wchar_t exePath[MAX_PATH] = {};
+    const DWORD exeLength = GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    if (exeLength > 0 && exeLength < MAX_PATH) {
+      std::wstring helper(exePath);
+      const auto slash = helper.find_last_of(L"\\/");
+      if (slash != std::wstring::npos) {
+        helper = helper.substr(0, slash + 1) + L"BangkeSettings.exe";
+        std::wstring command = L"\"" + helper + L"\" /updatemonitor";
+        STARTUPINFOW startup = {}; startup.cb = sizeof(startup);
+        PROCESS_INFORMATION process = {};
+        if (CreateProcessW(helper.c_str(), command.data(), nullptr, nullptr, FALSE,
+                           CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process)) {
+          CloseHandle(process.hThread); CloseHandle(process.hProcess);
+        }
+      }
+    }
     nRet = app.Run();
   } catch (...) {
     // bad luck...

@@ -1,8 +1,9 @@
 // 单文件分发引导壳:把图形安装器(BangkeInstaller.exe)+ MSI + Qt 运行库
-// 作为 RCDATA 资源嵌入本 exe。运行时解包到 %TEMP%\BangkeSetup\,
+// 作为 RCDATA 资源嵌入本 exe。运行时解包到独立的临时目录,
 // 拉起安装界面,安装器退出后清理临时目录。
 // 载荷布局由资源 IDR_MANIFEST(100) 描述:每行 "资源ID|相对路径"。
 // 本体 requireAdministrator:双击即 UAC 一次(正规安装器惯例),子进程直启免代理。
+#include "PathList.h"
 #include <windows.h>
 #include <shlwapi.h>
 
@@ -149,12 +150,7 @@ static bool ExtractPayload(const std::wstring& dir,
 }
 
 static void DeleteTree(const std::wstring& dir) {
-  std::wstring dbl = dir;
-  for (auto& c : dbl)
-    if (c == L'\\')
-      c = L'\0';
-  dbl.push_back(L'\0');
-  dbl.push_back(L'\0');
+  const std::wstring dbl = bangke::installer::SinglePathList(dir);
   SHFILEOPSTRUCTW op{};
   op.wFunc = FO_DELETE;
   op.pFrom = dbl.c_str();
@@ -182,9 +178,13 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
 
   wchar_t tmp[MAX_PATH] = {0};
   GetTempPathW(MAX_PATH, tmp);
-  const std::wstring dir = std::wstring(tmp) + L"BangkeSetup";
-  DeleteTree(dir);  // 上次残留
-  CreateDirectoryW(dir.c_str(), NULL);
+  const std::wstring dir = std::wstring(tmp) + L"BangkeSetup-" +
+      std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64());
+  // Never delete another launch's payload; concurrent installers own separate dirs.
+  if (!CreateDirectoryW(dir.c_str(), NULL)) {
+    MessageBoxW(NULL, L"无法创建安装临时目录，请稍后重试。", L"蚌壳拼音", MB_ICONERROR | MB_OK);
+    return 1;
+  }
 
   std::wstring msiName;
   bool ok = ExtractPayload(dir, &msiName);

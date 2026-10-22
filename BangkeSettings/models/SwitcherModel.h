@@ -39,11 +39,13 @@ class SwitcherModel : public QAbstractListModel {
   Q_INVOKABLE void refresh();
   // 返回是否有改动被写入
   Q_INVOKABLE bool save();
+  bool saveSucceeded() const { return saveSucceeded_; }
 
  signals:
   void info(const QString& title, const QString& body);
 
  private:
+  bool saveSucceeded_ = true;
   void loadSettings();
   void populate();
 
@@ -56,6 +58,7 @@ class SwitcherModel : public QAbstractListModel {
     QString id;
     QString name;
     bool enabled = false;
+    bool savedEnabled = false;
   };
   std::vector<SchemaRowRec> rows_;
   bool loaded_ = false;

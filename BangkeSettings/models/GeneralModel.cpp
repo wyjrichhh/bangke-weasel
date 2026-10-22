@@ -95,6 +95,8 @@ QVariantList GeneralModel::notificationOptions() const {
 }
 
 void GeneralModel::load() {
+  if (loaded_)
+    return;
   api_->load_settings(settings_);
   RimeConfig config = {0};
   if (!api_->settings_get_config(settings_, &config))
@@ -106,11 +108,12 @@ void GeneralModel::load() {
     pageSize_ = ps;
   initPs_ = ps;
 
-  // 拼音注释:0=隐藏、16=显示(共享默认已随 mac 改为显示)
-  const int cfp = style_.GetStyleInt("comment_font_point", 16);
+  // 新用户默认关闭拼写提示；已有显式设置继续生效。
+  const int cfp = style_.GetStyleInt("comment_font_point", 0);
   commentHints_ = cfp >= 16;
   initCommentHints_ = commentHints_;
 
+  api_->load_settings(bangkeStyle_);
   notificationsMode_ = ReadNotifications(api_, bangkeStyle_);
   initNotifications_ = notificationsMode_;
 
@@ -137,12 +140,13 @@ void GeneralModel::resetDefaults() {
   pageSize_ = 5;
   shiftL_ = QStringLiteral("commit_code");
   shiftR_ = QStringLiteral("commit_code");
-  commentHints_ = true;
+  commentHints_ = false;
   notificationsMode_ = QStringLiteral("never");
   emit changed();
 }
 
 bool GeneralModel::save() {
+  saveSucceeded_ = true;
   if (!loaded_)
     return false;
   const int ps = pageSize_;
@@ -162,8 +166,10 @@ bool GeneralModel::save() {
     if (sr != initShiftR_)
       api_->customize_string(settings_, "ascii_composer/switch_key/Shift_R",
                              sr.toUtf8().constData());
-    if (!api_->save_settings(settings_))
-      return false;
+    if (!api_->save_settings(settings_)) {
+      saveSucceeded_ = false;
+      return changed;
+    }
     initPs_ = ps;
     initShiftL_ = sl;
     initShiftR_ = sr;
@@ -180,8 +186,10 @@ bool GeneralModel::save() {
                           hints ? 16 : 0);
     if (notify)
       WriteNotifications(api_, bangkeStyle_, notificationsMode_);
-    if (!api_->save_settings(bangkeStyle_))
-      return false;
+    if (!api_->save_settings(bangkeStyle_)) {
+      saveSucceeded_ = false;
+      return changed;
+    }
     initCommentHints_ = hints;
     initNotifications_ = notificationsMode_;
     changed = true;

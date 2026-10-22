@@ -290,9 +290,7 @@ struct UIStyle {
   int client_caps;
   int baseline;
   int linespacing;
-  // 整窗不透明度(mac alphaValue 语义):ULW 常量 alpha,文字随背景
-  // 一起半透明,下层内容可见 —— 只乘背景色时文字全不透明,观感是
-  // 「变暗」而非「透下层」
+  // 整窗不透明度：背景、高亮、文字合成后统一应用，对齐 macOS alphaValue。
   int window_alpha;
 
   UIStyle()

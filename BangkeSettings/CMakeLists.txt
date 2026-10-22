@@ -4,8 +4,9 @@ project(BangkeSettings LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# rime.dll 使用静态 MSVC 运行库，本程序须保持一致
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+# Qt 官方共享构建使用 /MD；本进程与 Qt 保持一致。
+# rime 的 C API 由库自身释放分配对象，不跨 DLL 传递 CRT 所有权。
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
 # 版本数与图标绝对路径在 configure 阶段烘进 rc:
 # target_compile_definitions 不会到达 rc.exe,生成目录也让相对路径失锚
@@ -27,7 +28,7 @@ if(NOT DEFINED ENV{BOOST_ROOT})
   message(FATAL_ERROR "BOOST_ROOT not set; run from env.bat / build.bat")
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Qml)
+find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Qml Network Widgets)
 # REQUIRES 6.8 取 QTP0001/QTP0004 的新行为:模块落在引擎默认导入路径 /qt/qml 下
 # (main.cpp 的 loadFromModule 与兜底 URL 都按这条写的),子目录里的 .qml 也会
 # 各生成一份 redirect qmldir —— qml/pages 那几层的隐式导入靠它
@@ -40,6 +41,7 @@ endif()
 
 qt_add_executable(BangkeSettings WIN32
   main.cpp
+  update/updatechecker.cpp update/updatechecker.h
   AppController.cpp AppController.h
   SystemTheme.cpp SystemTheme.h
   WinChrome.cpp WinChrome.h
@@ -109,6 +111,8 @@ target_link_directories(BangkeSettings PRIVATE
 )
 
 target_link_libraries(BangkeSettings PRIVATE
+  Qt6::Network
+  Qt6::Widgets
   Qt6::Quick
   Qt6::QuickControls2
   Qt6::Qml

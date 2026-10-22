@@ -22,14 +22,14 @@ Item {
         implicitWidth: 6
         radius: 3
         color: Theme.ink3
-        opacity: 0.35
+        opacity: 0.65
       }
     }
 
     ColumnLayout {
       id: column
-      width: scroll.availableWidth
-      spacing: 14
+      width: scroll.availableWidth - 12
+      spacing: 20
     }
   }
 }

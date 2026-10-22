@@ -1,7 +1,16 @@
 #include <string>
 
 #include <QFont>
+#include <QFontDatabase>
 #include <QGuiApplication>
+#include <QApplication>
+#include <QSystemTrayIcon>
+#include <QStandardPaths>
+#include <QDir>
+#include <QLockFile>
+#include <QTimer>
+#include <QDesktopServices>
+#include "update/updatechecker.h"
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -18,13 +27,14 @@
 
 namespace {
 
-enum class Mode { Gui, Deploy, Sync, Install, Dict, Cleanup, ClearPending, Help };
+enum class Mode { Gui, Deploy, Sync, Install, Dict, Cleanup, ClearPending, UpdateMonitor, Help };
 
 Mode parseMode(const QString& arg) {
   QString a = arg;
   if (a.startsWith('/') || a.startsWith('-'))
     a.remove(0, 1);
   a = a.toLower();
+  if (a == "updatemonitor") return Mode::UpdateMonitor;
   if (a == "deploy")
     return Mode::Deploy;
   if (a == "sync")
@@ -76,7 +86,7 @@ int main(int argc, char* argv[]) {
 
   int ret = 0;
   {
-    QGuiApplication app(argc, argv);
+    QApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral(u"蚌壳拼音·设置"));
     QGuiApplication::setOrganizationName(QStringLiteral("Bangke"));
     // 标题栏图标:QML 的 Window 没设 icon 就落回 Windows 默认应用图标
@@ -91,6 +101,37 @@ int main(int argc, char* argv[]) {
     if (mode == Mode::ClearPending)
       return Configurator::ClearPendingDeletes();
 
+    if (mode == Mode::UpdateMonitor) {
+      app.setQuitOnLastWindowClosed(false);
+      const auto state = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+      QDir().mkpath(state);
+      QLockFile lock(state + "/update-monitor.lock");
+      if (!lock.tryLock()) return 0;
+      bangke::UpdateChecker checker(QStringLiteral("windows"), QStringLiteral("%1.%2.%3.%4")
+          .arg(VERSION_MAJOR).arg(VERSION_MINOR).arg(VERSION_PATCH).arg(VERSION_BUILD));
+      QSystemTrayIcon tray(QIcon(QStringLiteral(":/bangke.ico")));
+      QUrl latestUrl;
+      QObject::connect(&tray, &QSystemTrayIcon::messageClicked, &app, [&]() {
+        if (!latestUrl.isEmpty()) QDesktopServices::openUrl(latestUrl);
+      });
+      QObject::connect(&checker, &bangke::UpdateChecker::available, &app,
+        [&](const QString& version, const QUrl& url, const QString&, bool) {
+          latestUrl = url;
+          tray.show();
+          tray.showMessage(QStringLiteral(u"蚌壳拼音有新版本"),
+            QStringLiteral(u"版本 %1 已发布。点击下载，或到设置 → 关于中管理更新提醒。").arg(version));
+          QTimer::singleShot(60000, &tray, [&tray]() { tray.hide(); });
+        });
+      QTimer timer;
+      QObject::connect(&timer, &QTimer::timeout, &checker, [&checker]() { checker.check(false); });
+      timer.setTimerType(Qt::PreciseTimer);
+      QTimer::singleShot(30000, &checker, [&checker, &timer]() {
+        checker.check(false);
+        timer.start(60 * 60 * 1000);
+      });
+      return app.exec();
+    }
+
     Configurator configurator;
     configurator.Initialize();
 
@@ -102,6 +143,8 @@ int main(int argc, char* argv[]) {
                        });
 
     switch (mode) {
+      case Mode::UpdateMonitor:
+        break;
       case Mode::Help:
         showUsage();
         break;
@@ -133,6 +176,10 @@ int main(int argc, char* argv[]) {
                              QStringLiteral("Microsoft YaHei UI")});
         appFont.setPixelSize(13);
         app.setFont(appFont);
+        // QML font.family overrides the application family list; set a real
+        // Han fallback so Segoe UI does not fall back to SimSun.
+        QFontDatabase::setApplicationFallbackFontFamilies(
+            QChar::Script_Han, {QStringLiteral("Microsoft YaHei UI")});
         // 落到 Basic:QML 靠每个实例覆写 background/indicator 拿真投影与焦点环,
         // 换 style 会把这些盖掉
         QQuickStyle::setStyle(QStringLiteral("Basic"));

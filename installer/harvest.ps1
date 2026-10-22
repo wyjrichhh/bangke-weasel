@@ -8,6 +8,15 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path $OutputDir).Path
 
+# Reject incomplete packages before WiX turns missing features into a valid MSI.
+foreach ($required in @('BangkeServer.exe', 'BangkeSettings.exe', 'bangkex64.dll', 'rime.dll',
+    'data\default.yaml', 'data\weasel.yaml', 'data\rime_ice.schema.yaml', 'data\luna_pinyin.schema.yaml',
+    'predict_models\zh-base-ct2-int8\model.bin', 'predict_models\zh-base-ct2-int8\tokenizer.json',
+    'predict_models\zh-base-ct2-int8\shared_vocabulary.json')) {
+  $file = Get-Item (Join-Path $root $required) -ErrorAction SilentlyContinue
+  if (-not $file -or $file.PSIsContainer -or $file.Length -eq 0) { throw "Required package file missing: $required" }
+}
+
 # 兜底：Qt(/MD) 依赖 VC 运行库，随程序目录捆绑，防目标机 System32 CRT 异常
 if (-not (Test-Path "$root\msvcp140.dll")) {
   $crt = Get-ChildItem 'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT\msvcp140.dll' -ErrorAction SilentlyContinue |
@@ -20,7 +29,7 @@ if (-not (Test-Path "$root\msvcp140.dll")) {
   }
 }
 
-$exclude = @('bangkex64.dll', 'weasel.log', 'BangkeDeployer.exe',
+$exclude = @('BangkeInstaller.exe', 'bangkex64.dll', 'weasel.log', 'BangkeDeployer.exe',
                'WinSparkle.dll', '7z.exe', '7z.dll', 'curl.exe',
                'install.bat', 'uninstall.bat', 'stop_service.bat')
 # .dmp 曾把一个 534MB 崩溃转储打进 MSI;.wixpdb/.exp/.lib 是构建副产物
@@ -29,7 +38,7 @@ $excludeExt = @('.log', '.pdb', '.old', '.msi', '.dmp', '.bak', '.tmp',
 
 $files = Get-ChildItem $root -Recurse -File | Where-Object {
   ($exclude -notcontains $_.Name) -and ($excludeExt -notcontains $_.Extension.ToLower())
-}
+} | Sort-Object FullName
 
 function DirId([string]$rel) {
   if ($rel -eq '.') { return 'INSTALLDIR' }

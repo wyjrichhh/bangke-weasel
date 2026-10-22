@@ -5,6 +5,12 @@
 #include <QCheckBox>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QSettings>
+#include <QCloseEvent>
+#include <QShowEvent>
+#include <QHideEvent>
+#include <QEnterEvent>
 #include <QFileSystemWatcher>
 #include <QFrame>
 #include <QHBoxLayout>
@@ -12,11 +18,8 @@
 #include <QMessageBox>
 #include <QKeyEvent>
 #include <QMouseEvent>
-#include <QPointer>
 #include <QProcess>
-#include <QProgressBar>
 #include <QPushButton>
-#include <QStyle>
 #include <QStackedWidget>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -27,17 +30,20 @@
 #include <QEasingCurve>
 #include <QPainter>
 #include <QPainterPath>
+#include <QFont>
+#include <QFontDatabase>
+#include <cmath>
 #include <windows.h>
 #include <msi.h>
 #include <msiquery.h>
 
-#include <tuple>
+#include "InstallPolicy.h"
 #include <cstring>
 
 static const wchar_t* kUpgradeCode = L"{8F1D4B33-9C2A-4E6D-B0F7-3A5C8E21D940}";
 
-static QString MsiPackageVersion(const QString& path);
-static std::tuple<int, int, int> ParseVersion(const QString& v);
+static QString MsiPackageProperty(const QString& path, const QString& property = QStringLiteral("ProductVersion"));
+static std::optional<bangke::installer::Version> ParseVersion(const QString& v);
 
 static QString FindMsi() {
   // 引导壳会把本次解包的 MSI 文件名作为第一个参数传入 —— 参数是
@@ -54,10 +60,10 @@ static QString FindMsi() {
   const auto msis = dir.entryList({QStringLiteral("BangkeSetup-*.msi")},
                                   QDir::Files);
   QString best;
-  std::tuple<int, int, int> bestVer{-1, -1, -1};
+  std::optional<bangke::installer::Version> bestVer;
   for (const auto& name : msis) {
     const QString path = dir.absoluteFilePath(name);
-    const auto ver = ParseVersion(MsiPackageVersion(path));
+    const auto ver = ParseVersion(MsiPackageProperty(path));
     if (ver > bestVer) {
       bestVer = ver;
       best = path;
@@ -88,14 +94,14 @@ static QString InstalledVersion(const QString& code) {
 }
 
 // 从安装包的 Property 表读 ProductVersion，用于欢迎页的版本对比展示
-static QString MsiPackageVersion(const QString& path) {
+static QString MsiPackageProperty(const QString& path, const QString& property) {
   MSIHANDLE db = 0;
   if (MsiOpenDatabaseW(path.toStdWString().c_str(), MSIDBOPEN_READONLY, &db) != ERROR_SUCCESS)
     return QString();
   QString result;
   MSIHANDLE view = 0;
-  if (MsiDatabaseOpenViewW(db,
-                           L"SELECT `Value` FROM `Property` WHERE `Property` = 'ProductVersion'",
+  const auto query = QStringLiteral("SELECT `Value` FROM `Property` WHERE `Property` = '%1'").arg(property).toStdWString();
+  if (MsiDatabaseOpenViewW(db, query.c_str(),
                            &view) == ERROR_SUCCESS) {
     if (MsiViewExecute(view, 0) == ERROR_SUCCESS) {
       MSIHANDLE rec = 0;
@@ -114,13 +120,14 @@ static QString MsiPackageVersion(const QString& path) {
   return result;
 }
 
-static std::tuple<int, int, int> ParseVersion(const QString& v) {
-  const auto parts = v.split('.');
-  int a = 0, b = 0, c = 0;
-  if (parts.size() > 0) a = parts[0].toInt();
-  if (parts.size() > 1) b = parts[1].toInt();
-  if (parts.size() > 2) c = parts[2].toInt();
-  return {a, b, c};
+static std::optional<bangke::installer::Version> ParseVersion(const QString& v) {
+  return bangke::installer::ParseVersion(v.toStdString());
+}
+
+static QString InstalledRoot() {
+  QSettings registry(QStringLiteral("HKEY_LOCAL_MACHINE\\Software\\Bangke"), QSettings::NativeFormat);
+  return registry.value(QStringLiteral("BangkeRoot"),
+      QDir(qEnvironmentVariable("ProgramFiles")).filePath(QStringLiteral("Bangke Pinyin"))).toString();
 }
 
 // ---------------- MSI 执行 ----------------
@@ -129,19 +136,22 @@ struct MsiJob {
   enum Op { Install, Repair, Uninstall } op;
   QString msiPath, productCode;
   bool wasInstalled = false;  // 操作开始前产品是否已装（区分安装/升级文案）
-  bool forceReinstall = false;  // 同/低版本"重新安装":不强制覆盖的话
-                                // MSI 对同版本 /i 默认不替换任何文件
+
 };
 
-static QString MsiLogPath(const QString& msi) { return msi + ".log"; }
+static QString MsiLogPath(const QString& msi) {
+  // The bootstrap removes its payload directory on exit; diagnostics must survive.
+  const QString directory = QDir::tempPath() + QStringLiteral("/BangkeSetupLogs");
+  QDir().mkpath(directory);
+  return directory + QLatin1Char('/') + QFileInfo(msi).completeBaseName() +
+      QStringLiteral("-%1.log").arg(QCoreApplication::applicationPid());
+}
 
 static QStringList BuildArgs(const MsiJob& job) {
   const QString log = QDir::toNativeSeparators(MsiLogPath(job.msiPath));
-  // 修复与卸载的对象是"已经装上的那个产品",所以按它的 ProductCode 走,不能拿随包这份
-  // MSI 的路径当 target:WiX 没写死 ProductCode,每次构建都是一个新 GUID,/x <这份包的
-  // 路径> 卸的是"这份包代表的产品",而它还没装上 —— 报 1605(该操作只对当前已安装的产品
-  // 有效),用户看到的就是"点卸载报错、产品还在"。
-  // 安装/升级则必须走 /i <路径>:MajorUpgrade 按 UpgradeCode 接管旧版本。
+  // Uninstall uses the installed ProductCode, even if the payload is newer.
+  // Repair is selected only for the same ProductCode and recaches this MSI;
+  // a different payload goes through /i and the normal MajorUpgrade chain.
   const QString installed = job.productCode.isEmpty()
                                 ? QDir::toNativeSeparators(job.msiPath)
                                 : job.productCode;
@@ -149,16 +159,10 @@ static QStringList BuildArgs(const MsiJob& job) {
   switch (job.op) {
     case MsiJob::Install:
       args << "/i" << QDir::toNativeSeparators(job.msiPath);
-      // 同版本重装必须强制:Windows Installer 对"同版本 /i"默认只补
-      // 缺失文件(REINSTALLMODE=pou),用户点了重装却什么都没换。
-      // amus = 无条件按包内版本覆盖全部文件
-      if (job.forceReinstall) {
-        args << "REINSTALLMODE=amus"
-             << "REINSTALL=ALL";
-      }
       break;
     case MsiJob::Repair:
-      args << "/f" << installed;
+      // Recache from this payload: the previous bootstrap directory is gone.
+      args << "/fvomus" << QDir::toNativeSeparators(job.msiPath);
       break;
     case MsiJob::Uninstall:
       args << "/x" << installed;
@@ -189,20 +193,22 @@ class BusyBar : public QWidget {
       m_phase = v.toReal();
       update();
     });
-    a->start();
+    m_animation = a;
   }
 
  protected:
+  void showEvent(QShowEvent* event) override { QWidget::showEvent(event); m_animation->start(); }
+  void hideEvent(QHideEvent* event) override { m_animation->stop(); QWidget::hideEvent(event); }
   void paintEvent(QPaintEvent*) override {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
     p.setPen(Qt::NoPen);
-    p.setBrush(QColor(0xE4, 0xE8, 0xE9));
+    p.setBrush(QColor("#253438"));
     p.drawRoundedRect(rect(), height() / 2.0, height() / 2.0);
     if (m_value <= 0.0)
       return;
     const QRectF done(0, 0, width() * m_value, height());
-    p.setBrush(QColor(0x0E, 0x93, 0x84));
+    p.setBrush(QColor("#7DE2CB"));
     p.drawRoundedRect(done, height() / 2.0, height() / 2.0);
     // 扫光只叠在已完成的那段上:部署阶段之间进度会停(FirstDeploy 可能几分钟),
     // 完全静止看着像卡死,给它一点持续的动作
@@ -227,6 +233,7 @@ class BusyBar : public QWidget {
   }
 
  private:
+  QVariantAnimation* m_animation = nullptr;
   qreal m_phase = 0.0;
   qreal m_value = 0.0;
 };
@@ -258,7 +265,7 @@ class CheckMark : public QWidget {
   void paintEvent(QPaintEvent*) override {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
-    const QColor c = m_ok ? QColor(0x0E, 0x93, 0x84) : QColor(0xE0, 0x56, 0x56);
+    const QColor c = m_ok ? QColor("#7DE2CB") : QColor(0xE0, 0x56, 0x56);
     const QRectF r = rect().adjusted(6, 6, -6, -6);
     QPen pen(c, 3.2);
     pen.setCapStyle(Qt::RoundCap);
@@ -304,111 +311,47 @@ class CheckMark : public QWidget {
 
 // ---------------- UI ----------------
 
-// 海滩场景:天/海/沙 + 循环冲刷的浪 + 随安装阶段张开的蚌壳与珍珠。
-// 开合度 setProgress 绑定真实阶段序(非假百分比),插值缓动过渡
-class BeachScene : public QWidget {
+// 几何蚌壳：细线扇骨与珍珠，静态绘制，仅阶段变化时重绘。
+class ShellMark : public QWidget {
  public:
-  explicit BeachScene(QWidget* parent = nullptr) : QWidget(parent) {
-    setFixedSize(320, 140); // 横向长条更像"舞台"
+  explicit ShellMark(QWidget* parent = nullptr) : QWidget(parent) {
+    setFixedSize(360, 152);
     setAttribute(Qt::WA_TransparentForMouseEvents);
-    m_timer = new QTimer(this);
-    connect(m_timer, &QTimer::timeout, this, [this] {
-      m_wave += 0.016;
-      if (m_wave >= 1.0)
-        m_wave -= 1.0;
-      update();
-    });
-    m_openAnim = new QVariantAnimation(this);
-    m_openAnim->setDuration(700);
-    m_openAnim->setEasingCurve(QEasingCurve::OutCubic);
-    connect(m_openAnim, &QVariantAnimation::valueChanged, this,
-            [this](const QVariant& v) {
-              m_open = v.toReal();
-              update();
-            });
   }
-  void setProgress(qreal p) {
-    p = qBound(0.0, p, 1.0);
-    m_openAnim->stop();
-    m_openAnim->setStartValue(m_open);
-    m_openAnim->setEndValue(p);
-    m_openAnim->start();
-  }
-
+  void setProgress(qreal p) { m_progress = qBound(0.0, p, 1.0); update(); }
  protected:
-  void showEvent(QShowEvent* e) override {
-    QWidget::showEvent(e);
-    m_timer->start(33);  // 波浪只在可见时跑,不空烧 CPU
-  }
-  void hideEvent(QHideEvent* e) override {
-    QWidget::hideEvent(e);
-    m_timer->stop();
-  }
   void paintEvent(QPaintEvent*) override {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
-    const int w = width(), h = height();
-    const QColor accent(0x0E, 0x93, 0x84);
-    const QColor soft(0xE4, 0xF3, 0xF1);
-
-    // 淡色底:托住蚌壳的那块"水面",不再画天空/太阳/沙滩那套插画
-    QPainterPath ground;
-    ground.addRoundedRect(QRectF(0, 0, w, h), 16, 16);
-    p.fillPath(ground, soft);
-
-    // 极简线描:下壳固定,上壳随进度抬起(m_open:0 闭 -> 1 开),中间一颗珠
-    const qreal cx = w / 2.0, cy = h * 0.66;
-    const qreal rx = w * 0.30, ry = h * 0.30;
-    const qreal lift = m_open * ry * 1.15;
-    const int breathe = int(1.4 * sin(m_wave * 6.28));
-
-    QPen pen(accent, 3.0);
-    pen.setCapStyle(Qt::RoundCap);
+    const QPointF center(width() / 2.0, 106);
+    p.setPen(QPen(QColor("#253438"), 1));
+    for (int x = 12; x < width(); x += 24)
+      for (int y = 12; y < height(); y += 24) p.drawPoint(x, y);
     p.setBrush(Qt::NoBrush);
-
-    // 珍珠:随张开度浮现
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(accent.red(), accent.green(), accent.blue(),
-                      int(60 + 150 * m_open)));
-    p.drawEllipse(QPointF(cx, cy - ry * 0.30), 7, 7);
-
-    // 下壳(半椭圆开口向上)
-    p.setPen(pen);
-    QPainterPath lower;
-    lower.moveTo(cx - rx, cy + breathe);
-    lower.quadTo(cx, cy + ry * 1.15 + breathe, cx + rx, cy + breathe);
-    p.drawPath(lower);
-    // 壳上的两道纹
-    p.setPen(QPen(accent, 1.4));
-    for (int i = 1; i <= 2; ++i) {
-      const qreal t = i * 0.22;
+    p.setPen(QPen(QColor("#35494D"), 1));
+    p.drawEllipse(QPointF(width() / 2.0, 75), 118, 64);
+    p.setPen(QPen(QColor("#7DE2CB"), 1.3));
+    for (int i = 0; i <= 12; ++i) {
+      const qreal angle = 3.141592653589793 * i / 12;
+      const QPointF edge(center.x() + 82 * std::cos(angle),
+                         center.y() - 72 * std::sin(angle));
       QPainterPath rib;
-      rib.moveTo(cx - rx * (1 - t), cy + ry * 0.34 * t + breathe);
-      rib.quadTo(cx, cy + ry * (0.62 + 0.3 * t) + breathe,
-                 cx + rx * (1 - t), cy + ry * 0.34 * t + breathe);
+      rib.moveTo(center);
+      rib.quadTo(QPointF((center.x() + edge.x()) / 2,
+                         center.y() - 18 - 34 * std::sin(angle)), edge);
       p.drawPath(rib);
     }
-
-    // 上壳(随进度抬起:从扣在下壳上,到完全张开)
-    p.save();
-    p.translate(cx, cy + breathe - lift * 0.5);
-    p.rotate(-14.0 * m_open);
-    QPainterPath upper;
-    upper.moveTo(-rx, 0);
-    upper.quadTo(0, -ry * 1.15, rx, 0);
-    p.setPen(pen);
-    p.drawPath(upper);
-    p.restore();
+    p.drawArc(QRectF(center.x() - 82, center.y() - 72, 164, 144), 0, 180 * 16);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor("#7DE2CB"));
+    const qreal radius = 3 + m_progress * 3;
+    p.drawEllipse(QPointF(center.x(), center.y() - 28), radius, radius);
   }
-
  private:
-  QTimer* m_timer = nullptr;
-  QVariantAnimation* m_openAnim = nullptr;
-  qreal m_open = 0.0;
-  qreal m_wave = 0.0;
+  qreal m_progress = 0;
 };
 
-// 自绘关闭钮:粗白 × 由线条画出,不依赖字体/系统图标(两者在用户环境均失灵)
+// 自绘关闭按钮，不依赖字体中的特殊符号。
 class CloseButton : public QWidget {
  public:
   explicit CloseButton(QWidget* parent = nullptr) : QWidget(parent) {
@@ -422,11 +365,11 @@ class CloseButton : public QWidget {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
     p.setPen(Qt::NoPen);
-    // 静止透明(白面板上不该有块色),悬停/按下才转红
+    // 悬停时显示关闭按钮背景。
     const bool hot = underMouse() || isDown();
     p.setBrush(hot ? QColor(0xE0, 0x56, 0x56) : Qt::transparent);
     p.drawRoundedRect(rect(), 8, 8);
-    QPen pen(hot ? QColor(0xFF, 0xFF, 0xFF) : QColor(0x5C, 0x66, 0x68), 1.7);
+    QPen pen(hot ? QColor(0xFF, 0xFF, 0xFF) : QColor("#97ABA9"), 1.7);
     pen.setCapStyle(Qt::RoundCap);
     p.setPen(pen);
     // 叉:占按钮约 40%,四边留白均匀
@@ -460,13 +403,15 @@ class MainWindow : public QWidget {
     setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint);
     setAttribute(Qt::WA_TranslucentBackground);
     setWindowOpacity(0.0);  // 入场动画从全透明起步
-    resize(600, 440);
+    resize(680, 620);
+    setMinimumSize(680, 620);
+    setWindowTitle(QStringLiteral(u"蚌壳拼音 · 安装"));
 
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(0, 0, 0, 0);
     auto* panel = new QFrame(this);
     panel->setObjectName("panel");
-    // 白面板的浮层感:轻投影。原来是给深色面板调的 alpha 150,白底上会糊成一圈黑晕
+    // 投影边距独立于内容区，避免边缘被裁切。
     auto* shadow = new QGraphicsDropShadowEffect(this);
     shadow->setBlurRadius(44);
     shadow->setOffset(0, 10);
@@ -480,10 +425,10 @@ class MainWindow : public QWidget {
     box->setSpacing(0);
 
     auto* title = new QHBoxLayout();
-    auto* titleText = new QLabel(QStringLiteral(u"蚌壳拼音 · 安装"), panel);
+    auto* titleText = new QLabel(QStringLiteral("BANGKE  /  SETUP"), panel);
     titleText->setObjectName("title");
     m_closeBtn = new CloseButton(panel);
-    title->addSpacing(24);
+    title->setContentsMargins(28, 18, 18, 12);
     title->addWidget(titleText);
     title->addStretch();
     title->addWidget(m_closeBtn);
@@ -570,37 +515,23 @@ class MainWindow : public QWidget {
     m_stack->setCurrentWidget(next);
     fadeInWidget(next);
   }
-  // 阶段文案:淡出→换字→淡入
+  // 阶段文案直接更新，避免连续日志事件替换动画对象。
   void setActionText(const QString& text) {
     if (m_actionLabel->text() == text)
       return;
-    auto* fx = new QGraphicsOpacityEffect(m_actionLabel);
-    m_actionLabel->setGraphicsEffect(fx);
-    auto* out = new QPropertyAnimation(fx, "opacity", m_actionLabel);
-    out->setDuration(140);
-    out->setStartValue(1.0);
-    out->setEndValue(0.0);
-    connect(out, &QPropertyAnimation::finished, this, [this, text, fx] {
-      m_actionLabel->setText(text);
-      auto* inAnim = new QPropertyAnimation(fx, "opacity", m_actionLabel);
-      inAnim->setDuration(140);
-      inAnim->setStartValue(0.0);
-      inAnim->setEndValue(1.0);
-      connect(inAnim, &QPropertyAnimation::finished, this,
-              [this] { m_actionLabel->setGraphicsEffect(nullptr); });
-      inAnim->start(QAbstractAnimation::DeleteWhenStopped);
-    });
-    out->start(QAbstractAnimation::DeleteWhenStopped);
+    m_actionLabel->setText(text);
   }
 
-  void startJob(MsiJob::Op op, bool force = false) {
+  void startJob(MsiJob::Op op) {
     if (m_msiPath.isEmpty()) {
       QMessageBox::warning(this, QStringLiteral(u"蚌壳拼音"),
                            QStringLiteral(u"未找到 BangkeSetup-*.msi，请与安装程序放在同一目录。"));
       return;
     }
-    m_job = MsiJob{op, m_msiPath, m_productCode, !m_productCode.isEmpty(),
-                   force};
+    m_job = MsiJob{op, m_msiPath, m_productCode, !m_productCode.isEmpty()};
+    m_bar->setValue(0);
+    m_scene->setProgress(0);
+    m_stage = 0;
     setActionText(QStringLiteral(u"正在准备…"));
     m_progressTitle->setText(op == MsiJob::Uninstall ? QStringLiteral(u"正在卸载 蚌壳拼音")
                                 : op == MsiJob::Repair  ? QStringLiteral(u"正在修复 蚌壳拼音")
@@ -630,6 +561,9 @@ class MainWindow : public QWidget {
 
   void startLogWatch() {
     m_logPos = 0;
+    m_logPending.clear();
+    m_logEncodingKnown = false;
+    m_logUtf16 = false;
     m_logFile.setFileName(MsiLogPath(m_msiPath));
     m_watcher = new QFileSystemWatcher(this);
     // log 文件由 msiexec 创建，先盯目录等它出现
@@ -669,49 +603,46 @@ class MainWindow : public QWidget {
     if (chunk.isEmpty())
       return;
 
-    static const struct { const char* a; const wchar_t* t; } steps[] = {
-        {"StopServer", L"正在停止输入法服务"},
-        {"ClearPendingDelete", L"正在准备文件"},
-        {"InstallValidate", L"正在校验安装"},
-        {"InstallFiles", L"正在复制文件"},
-        {"WriteRegistryValues", L"正在写入注册表"},
-        {"RegisterTSF", L"正在注册输入法"},
-        {"FirstDeploy", L"正在部署输入方案"},
-        {"StartServer", L"正在启动服务"},
-        {"RemoveFiles", L"正在移除文件"},
-        {"UnregisterTSF", L"正在注销输入法"},
-        {"Cleanup", L"正在清理残留"},
-    };
-    int bestPos = -1;
-    const char* bestKey = nullptr;
-    const wchar_t* bestText = nullptr;
-    for (const auto& s : steps) {
-      const int p = chunk.lastIndexOf(s.a);
-      if (p > bestPos) {
-        bestPos = p;
-        bestKey = s.a;
-        bestText = s.t;
-      }
+    m_logPending += chunk;
+    if (!m_logEncodingKnown && m_logPending.size() >= 2) {
+      m_logUtf16 = m_logPending.startsWith(QByteArray::fromHex("fffe")) || m_logPending.at(1) == '\0';
+      m_logEncodingKnown = true;
     }
-    if (bestKey) {
-      setActionText(QString::fromWCharArray(bestText));
-      // 按部署序列换算阶段进度,蚌壳随之张开(真实进度,非假百分比)
-      static const char* kOrder[] = {"StopServer",  "ClearPendingDelete", "InstallValidate",
-                                     "InstallFiles", "WriteRegistryValues", "RegisterTSF",
-                                     "FirstDeploy",  "StartServer",         "RemoveFiles",
-                                     "UnregisterTSF", "Cleanup"};
-      const int N = sizeof(kOrder) / sizeof(kOrder[0]);
-      for (int i = 0; i < N; ++i) {
-        if (!strcmp(bestKey, kOrder[i])) {
-          m_scene->setProgress(i / (qreal)(N - 1));
-          m_bar->setValue(i / (qreal)(N - 1));
-          break;
-        }
-      }
+    const QByteArray newline = m_logUtf16 ? QByteArray::fromHex("0a00") : QByteArray("\n");
+    int end = 0;
+    while ((end = m_logPending.indexOf(newline)) >= 0) {
+      const QByteArray line = m_logPending.left(end);
+      m_logPending.remove(0, end + newline.size());
+      QString text;
+      if (m_logUtf16) {
+        for (int i = 0; i + 1 < line.size(); i += 2)
+          text += QChar(uchar(line[i]) | (ushort(uchar(line[i + 1])) << 8));
+      } else text = QString::fromLocal8Bit(line);
+      const std::string actionLine = text.toStdString();
+      const auto action = bangke::installer::ActionName(actionLine);
+      if (!action) continue;
+      const QString key = QString::fromUtf8(action->data(), int(action->size()));
+      const QStringList order = m_job.op == MsiJob::Uninstall
+          ? QStringList{"InstallValidate", "UnregisterTSF", "Cleanup", "RemoveFiles", "RemoveRegistryValues", "InstallFinalize"}
+          : QStringList{"InstallValidate", "InstallFiles", "ClearPendingDelete", "RegisterTSF", "WriteRegistryValues", "FirstDeploy", "StartServer", "InstallFinalize"};
+      const QStringList labels = m_job.op == MsiJob::Uninstall
+          ? QStringList{QStringLiteral(u"校验安装"), QStringLiteral(u"注销输入法"), QStringLiteral(u"清理残留"), QStringLiteral(u"移除文件"), QStringLiteral(u"清理注册表"), QStringLiteral(u"完成卸载")}
+          : QStringList{QStringLiteral(u"校验安装"), QStringLiteral(u"复制文件"), QStringLiteral(u"准备注册"), QStringLiteral(u"注册输入法"), QStringLiteral(u"写入配置"), QStringLiteral(u"部署输入方案（首次可能需要几分钟）"), QStringLiteral(u"启动服务"), QStringLiteral(u"完成安装")};
+      const auto accepted = bangke::installer::AcceptStage(m_stage, key.toStdString(), m_job.op == MsiJob::Uninstall);
+      if (!accepted) continue;
+      const int stage = *accepted;
+      m_stage = stage;
+      setActionText(labels.at(stage));
+      // Only completed stages count; 100% is reserved for a successful exit.
+      const qreal progress = stage / qreal(order.size());
+      m_scene->setProgress(progress);
+      m_bar->setValue(progress);
     }
+    if (m_logPending.size() > 65536) m_logPending.clear();
   }
 
   void msiFinished() {
+    if (!m_running) return;
     stopLogWatch();
     m_running = false;
     const int r = m_exitCode;
@@ -721,9 +652,10 @@ class MainWindow : public QWidget {
     // 1641 = ERROR_SUCCESS_REBOOT_INITIATED、3010 = ERROR_SUCCESS_REBOOT_REQUIRED：
     // 都是"成功了，只是要重启才彻底生效"，不是失败。原先只认 0，会把它们显示成
     // "操作失败 (代码 0x00000669)"，用户看到的是装好了却报错。
-    const bool rebootPending = (r == 1641 || r == 3010);
-    const bool ok = (r == 0 || rebootPending);
+    const bool rebootPending = bangke::installer::RequiresReboot(r);
+    const bool ok = bangke::installer::Succeeded(r);
     if (ok) {
+      m_bar->setValue(1);
       QString title, detail;
       switch (m_job.op) {
         case MsiJob::Uninstall:
@@ -746,7 +678,7 @@ class MainWindow : public QWidget {
             // 输入法的 dll 被各个正在运行的程序加载着，替换不了的那一份要等本次登录
             // 结束才落位。直说，并给一个按钮让用户自己决定什么时候注销——不替他决定。
             detail += QStringLiteral(
-                u"\n部分文件正被运行中的程序占用，注销一次即可完成更新。");
+                u"\n部分文件需要重启 Windows 才能完成替换，请保存工作后重启。");
           }
           break;
       }
@@ -758,12 +690,12 @@ class MainWindow : public QWidget {
                               QDir::toNativeSeparators(MsiLogPath(m_msiPath)));
     }
     m_check->start(ok);
-    m_launchCheck->setVisible(ok && m_job.op != MsiJob::Uninstall);
+    m_settingsCheck->setVisible(ok && m_job.op != MsiJob::Uninstall);
     // 注销与否由用户点，不代他决定：装/卸载后有文件要等登录结束才落位时，把这个按钮
     // 摆出来并说明原因
     if (ok)
       m_logoffBtn->setText(rebootPending
-                               ? QStringLiteral(u"立即注销（让更新生效）")
+                               ? QStringLiteral(u"重启 Windows（完成更新）")
                                : QStringLiteral(u"立即注销（清除输入法残留）"));
     m_logoffBtn->setVisible(ok && (m_job.op == MsiJob::Uninstall || rebootPending));
     m_openLogBtn->setVisible(!ok && !m_msiPath.isEmpty());
@@ -771,7 +703,7 @@ class MainWindow : public QWidget {
 
   void refreshState() {
     m_msiPath = FindMsi();
-    m_pkgVersion = MsiPackageVersion(m_msiPath);
+    m_pkgVersion = MsiPackageProperty(m_msiPath);
     m_productCode = InstalledProductCode();
     const bool installed = !m_productCode.isEmpty();
     const bool haveMsi = !m_msiPath.isEmpty();
@@ -787,19 +719,20 @@ class MainWindow : public QWidget {
     if (installed) {
       const QString cur = InstalledVersion(m_productCode);
       m_installedLabel->setText(QStringLiteral(u"已安装版本 %1").arg(cur));
-      // 升级与重装都走 /i：MajorUpgrade 自动按 UpgradeCode 接管旧版本。
-      // 同版本:强制覆盖(否则 MSI 不替换文件,点了等于没装);
-      // 低版本(用户翻出了旧安装包):明示"降级",不让它伪装成重装
-      if (ParseVersion(m_pkgVersion) > ParseVersion(cur)) {
+      const auto comparison = ParseVersion(m_pkgVersion);
+      const bool canInstall = comparison && ParseVersion(cur) && comparison >= ParseVersion(cur);
+      m_primaryBtn->setEnabled(canInstall);
+      m_repairBtn->setEnabled(canInstall);
+      m_primaryRepair = comparison == ParseVersion(cur) &&
+          MsiPackageProperty(m_msiPath, QStringLiteral("ProductCode")).compare(m_productCode, Qt::CaseInsensitive) == 0;
+      if (comparison > ParseVersion(cur))
         m_primaryBtn->setText(QStringLiteral(u"升级到 %1").arg(m_pkgVersion));
-        m_primaryForce = false;
-      } else if (ParseVersion(m_pkgVersion) == ParseVersion(cur)) {
-        m_primaryBtn->setText(QStringLiteral(u"重新安装（覆盖全部文件）"));
-        m_primaryForce = true;
-      } else {
-        m_primaryBtn->setText(QStringLiteral(u"降级到 %1").arg(m_pkgVersion));
-        m_primaryForce = true;
-      }
+      else if (m_primaryRepair)
+        m_primaryBtn->setText(QStringLiteral(u"修复当前版本"));
+      else if (comparison == ParseVersion(cur))
+        m_primaryBtn->setText(QStringLiteral(u"重新安装当前版本"));
+      else
+        m_primaryBtn->setText(QStringLiteral(u"已安装更新版本"));
     }
   }
 
@@ -818,13 +751,15 @@ class MainWindow : public QWidget {
     box->setContentsMargins(36, 8, 36, 28);
     box->setSpacing(12);
 
-    // 蚌壳当主角:张开态(=就绪)的那张线描,底色就是它自己画的那块淡色"舞台"
-    auto* hero = new BeachScene(welcomePage_);
+    // 简洁的品牌几何图形与产品信息。
+    auto* hero = new ShellMark(welcomePage_);
     hero->setProgress(1.0);
     box->addSpacing(6);
     box->addWidget(hero, 0, Qt::AlignHCenter);
-    box->addWidget(new QLabel(QStringLiteral(u"蚌壳拼音输入法"), welcomePage_), 0, Qt::AlignHCenter);
-    auto* sub = new QLabel(QStringLiteral(u"Rime 内核 · Windows 原生 TSF · 蚌壳出品"), welcomePage_);
+    auto* heading = new QLabel(QStringLiteral(u"让输入，回归心流。"), welcomePage_);
+    heading->setObjectName("heroTitle");
+    box->addWidget(heading, 0, Qt::AlignHCenter);
+    auto* sub = new QLabel(QStringLiteral(u"蚌壳拼音  /  本地 AI 联想 · Windows 原生输入"), welcomePage_);
     sub->setObjectName("sub");
     sub->setAlignment(Qt::AlignCenter);
     box->addWidget(sub, 0, Qt::AlignHCenter);
@@ -833,6 +768,9 @@ class MainWindow : public QWidget {
     m_pkgLabel->setAlignment(Qt::AlignCenter);
     box->addWidget(m_pkgLabel, 0, Qt::AlignHCenter);
     box->addSpacing(8);
+    auto* privacy = new QLabel(QStringLiteral(u"离线推理  ·  保留个人词库  ·  安装后即用"), welcomePage_);
+    privacy->setObjectName("sub");
+    box->addWidget(privacy, 0, Qt::AlignHCenter);
 
     m_msiMissing = new QLabel(
         QStringLiteral(u"未找到 BangkeSetup-*.msi。\n请将本程序与安装包放在同一目录后重新运行。"), welcomePage_);
@@ -845,7 +783,7 @@ class MainWindow : public QWidget {
     auto* fresh = new QVBoxLayout(freshGroup_);
     fresh->setContentsMargins(0, 0, 0, 0);
     fresh->setSpacing(10);
-    auto* pathNote = new QLabel(QStringLiteral(u"将安装到 C:\\Program Files\\Bangke Pinyin"), freshGroup_);
+    auto* pathNote = new QLabel(QStringLiteral(u"将安装到 %1").arg(QDir::toNativeSeparators(InstalledRoot())), freshGroup_);
     pathNote->setObjectName("sub");
     pathNote->setAlignment(Qt::AlignCenter);
     fresh->addWidget(pathNote);
@@ -863,18 +801,23 @@ class MainWindow : public QWidget {
     inst->addWidget(m_installedLabel);
     m_primaryBtn = accentButton(QStringLiteral(u"重新安装"));
     connect(m_primaryBtn, &QPushButton::clicked, this, [this] {
-      startJob(MsiJob::Install, m_primaryForce);
+      startJob(m_primaryRepair ? MsiJob::Repair : MsiJob::Install);
     });
     inst->addWidget(m_primaryBtn);
     auto* btnRow = new QHBoxLayout();
-    auto* repairBtn = new QPushButton(QStringLiteral(u"修复安装"));
+    auto* repairBtn = new QPushButton(QStringLiteral(u"使用此安装包修复"));
+    m_repairBtn = repairBtn;
     auto* uninstallBtn = new QPushButton(QStringLiteral(u"卸载"));
     uninstallBtn->setObjectName("danger");
     for (auto* b : {repairBtn, uninstallBtn}) {
       b->setMinimumHeight(36);
       b->setCursor(Qt::PointingHandCursor);
     }
-    connect(repairBtn, &QPushButton::clicked, this, [this] { startJob(MsiJob::Repair); });
+    connect(repairBtn, &QPushButton::clicked, this, [this] {
+      const bool sameProduct = MsiPackageProperty(m_msiPath, QStringLiteral("ProductCode"))
+          .compare(m_productCode, Qt::CaseInsensitive) == 0;
+      startJob(sameProduct ? MsiJob::Repair : MsiJob::Install);
+    });
     connect(uninstallBtn, &QPushButton::clicked, this, [this] {
       if (QMessageBox::question(this, QStringLiteral(u"卸载"),
                                 QStringLiteral(u"确定卸载蚌壳拼音吗？用户词库会保留。")) == QMessageBox::Yes)
@@ -895,7 +838,7 @@ class MainWindow : public QWidget {
     auto* box = new QVBoxLayout(progressPage_);
     box->setContentsMargins(48, 48, 48, 48);
     box->setSpacing(12);
-    m_scene = new BeachScene(progressPage_);
+    m_scene = new ShellMark(progressPage_);
     m_progressTitle = new QLabel(progressPage_);
     m_progressTitle->setAlignment(Qt::AlignCenter);
     m_actionLabel = new QLabel(QStringLiteral(u"正在准备…"), progressPage_);
@@ -930,14 +873,19 @@ class MainWindow : public QWidget {
     m_finishDetail->setObjectName("sub");
     m_finishDetail->setAlignment(Qt::AlignCenter);
     m_finishDetail->setWordWrap(true);
-    m_launchCheck = new QCheckBox(QStringLiteral(u"立即启动输入法服务"), finishPage_);
-    m_launchCheck->setChecked(true);
+    m_settingsCheck = new QCheckBox(QStringLiteral(u"打开蚌壳设置"), finishPage_);
+    m_settingsCheck->setChecked(false);
 
     m_logoffBtn = new QPushButton(QStringLiteral(u"立即注销（清除输入法残留）"));
     m_logoffBtn->setMinimumHeight(36);
     m_logoffBtn->setVisible(false);
-    connect(m_logoffBtn, &QPushButton::clicked, this, [] {
-      QProcess::startDetached(QStringLiteral("shutdown"), {QStringLiteral("/l")});
+    connect(m_logoffBtn, &QPushButton::clicked, this, [this] {
+      const bool reboot = m_exitCode == 3010 || m_exitCode == 1641;
+      if (QMessageBox::question(this, QStringLiteral(u"保存工作后继续"),
+          reboot ? QStringLiteral(u"现在重启 Windows？请先保存所有工作。")
+                 : QStringLiteral(u"现在注销？请先保存所有工作。")) != QMessageBox::Yes) return;
+      QProcess::startDetached(QStringLiteral("shutdown.exe"),
+          reboot ? QStringList{"/r", "/t", "0"} : QStringList{"/l"});
     });
 
     m_openLogBtn = new QPushButton(QStringLiteral(u"打开日志文件"));
@@ -951,11 +899,11 @@ class MainWindow : public QWidget {
 
     auto* doneBtn = accentButton(QStringLiteral(u"完成"));
     connect(doneBtn, &QPushButton::clicked, this, [this] {
-      if (m_launchCheck->isChecked() && m_launchCheck->isVisible()) {
+      if (m_settingsCheck->isChecked() && m_settingsCheck->isVisible()) {
         // explorer 拉起 = 用户会话、非提升，避免服务继承管理员上下文
         QProcess::startDetached(
             QStringLiteral("explorer"),
-            {QDir::toNativeSeparators(QStringLiteral(u"C:\\Program Files\\Bangke Pinyin\\BangkeServer.exe"))});
+            {QDir::toNativeSeparators(QDir(InstalledRoot()).filePath(QStringLiteral("BangkeSettings.exe")))});
       }
       close();
     });
@@ -964,7 +912,7 @@ class MainWindow : public QWidget {
     box->addSpacing(4);
     box->addWidget(m_finishTitle);
     box->addWidget(m_finishDetail);
-    box->addWidget(m_launchCheck, 0, Qt::AlignHCenter);
+    box->addWidget(m_settingsCheck, 0, Qt::AlignHCenter);
     box->addSpacing(8);
     box->addWidget(m_logoffBtn);
     box->addWidget(m_openLogBtn);
@@ -975,7 +923,7 @@ class MainWindow : public QWidget {
   }
 
   QString m_msiPath, m_productCode, m_pkgVersion;
-  bool m_primaryForce = false;
+  bool m_primaryRepair = false;
   QStackedWidget* m_stack = nullptr;
   QFrame *welcomePage_ = nullptr, *progressPage_ = nullptr, *finishPage_ = nullptr;
   QFrame *freshGroup_ = nullptr, *installedGroup_ = nullptr;
@@ -983,11 +931,12 @@ class MainWindow : public QWidget {
          *m_progressTitle = nullptr, *m_actionLabel = nullptr, *m_progressHint = nullptr,
          *m_finishTitle = nullptr, *m_finishDetail = nullptr;
   BusyBar* m_bar = nullptr;
-  BeachScene* m_scene = nullptr;
+  ShellMark* m_scene = nullptr;
   CheckMark* m_check = nullptr;
   bool m_entered = false;
-  QCheckBox* m_launchCheck = nullptr;
+  QCheckBox* m_settingsCheck = nullptr;
   QPushButton* m_primaryBtn = nullptr;
+  QPushButton* m_repairBtn = nullptr;
   QPushButton *m_logoffBtn = nullptr, *m_openLogBtn = nullptr;
   CloseButton* m_closeBtn = nullptr;
   MsiJob m_job;
@@ -997,6 +946,9 @@ class MainWindow : public QWidget {
   QFileSystemWatcher* m_watcher = nullptr;
   QFile m_logFile;
   qint64 m_logPos = 0;
+  int m_stage = 0;
+  QByteArray m_logPending;
+  bool m_logEncodingKnown = false, m_logUtf16 = false;
   int m_exitCode = -1;
   QPoint m_dragPos;
 };
@@ -1022,34 +974,39 @@ static void BootLog(const char* msg) {
 int main(int argc, char* argv[]) {
   BootLog("main enter");
   QApplication app(argc, argv);
+  QFontDatabase::setApplicationFallbackFontFamilies(
+      QChar::Script_Han, {QStringLiteral("Microsoft YaHei UI")});
   BootLog("QApplication up");
   QApplication::setApplicationName(QStringLiteral(u"蚌壳拼音安装器"));
 
-  // 与设置程序同一套语言:浅色 + teal、无渐变、发丝边 + 圆角。
-  // 原先是深 navy 面板 + 蓝色线性渐变 + 径向渐变图标块 —— 那是 WinRAR 那一代的语法,
-  // 也和设置程序不是一个体系。
+  app.setStyle("Fusion");
   app.setStyleSheet(QStringLiteral(uR"(
-    QWidget { background: transparent; color: #14181A; font-family: "Microsoft YaHei UI"; font-size: 13px; }
-    #panel { background: #FFFFFF; border-radius: 16px; border: 1px solid #EBEEEF; }
-    #title { font-size: 20px; font-weight: 600; color: #14181A; }
-    #sub { color: #5C6668; font-size: 12.5px; }
-    #warn { color: #B4761F; font-size: 13px; }
-    #finishTitle { font-size: 22px; font-weight: 600; color: #14181A; }
-    QPushButton { background: #FFFFFF; border: 1px solid #DFE3E4; border-radius: 10px;
-                  color: #5C6668; padding: 0 18px; min-height: 38px; }
-    QPushButton:hover { border-color: #0E9384; color: #0A6A60; }
-    QPushButton:pressed { background: #F1F4F4; }
-    QPushButton:disabled { color: #8A9496; border-color: #EBEEEF; }
-    #accent { background: #0E9384; border: none; color: #FFFFFF; font-size: 14px;
-              font-weight: 600; border-radius: 10px; }
-    #accent:hover { background: #0B8175; }
-    #accent:pressed { background: #096B61; }
-    #accent:disabled { background: #E4F3F1; color: #8A9496; }
-    #danger { color: #C0392B; }
-    #danger:hover { border-color: #E05656; color: #E05656; }
-    QProgressBar { background: #E4E8E9; border: none; border-radius: 3px; }
-    QProgressBar::chunk { background: #0E9384; border-radius: 3px; }
-    QCheckBox { color: #5C6668; spacing: 8px; }
+    QWidget { background: transparent; color: #E6EFED; font-family: "Microsoft YaHei UI"; font-size: 13px; }
+    #panel { background: #111A1D; border-radius: 14px; border: 1px solid #304044; }
+    #title { font-family: "Cascadia Code", "Consolas"; font-size: 12px; font-weight: 600; color: #8FA5A4; }
+    #heroTitle { font-size: 30px; font-weight: 600; color: #EDF5F2; }
+    #sub { color: #92A6A5; font-size: 12px; }
+    #warn { color: #EDBF7A; }
+    #finishTitle { font-size: 26px; font-weight: 600; }
+    QPushButton { background: #192528; border: 1px solid #35484C; border-radius: 7px;
+                  color: #C2D1CD; padding: 0 18px; min-height: 40px; }
+    QPushButton:hover { background: #223336; border-color: #7DE2CB; color: #E6FFF7; }
+    QPushButton:pressed { background: #2D4345; }
+    QPushButton:focus { border: 2px solid #7DE2CB; }
+    QPushButton:disabled { color: #627775; border-color: #283638; }
+    #accent { background: #7DE2CB; border: none; color: #102A27; font-size: 14px; font-weight: 600; }
+    #accent:hover { background: #A1EFDD; }
+    #accent:pressed { background: #5AC5AF; }
+    #accent:disabled { background: #243C39; color: #839A95; }
+    #danger { color: #EB9F9A; }
+    #danger:hover { border-color: #EB9F9A; }
+    QCheckBox { color: #92A6A5; spacing: 8px; }
+    QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px;
+                          border: 1px solid #49615F; background: #192528; }
+    QCheckBox::indicator:checked { border-color: #7DE2CB; background: #7DE2CB; }
+    QCheckBox::indicator:hover { border-color: #A1EFDD; }
+    QMessageBox { background: #111A1D; }
+
   )"));
 
   MainWindow w;

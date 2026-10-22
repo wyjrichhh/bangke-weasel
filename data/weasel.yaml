@@ -28,7 +28,7 @@ style:
   font_point: 16
   label_font_point: 16
   # 0 = 隐藏拼音注释;AI 标记在面板层豁免,不受此开关影响
-  comment_font_point: 16
+  comment_font_point: 0
   # 整窗不透明度(mac style/alpha),乘到面板各背景色
   alpha: 1.0
   candidate_abbreviate_length: 0

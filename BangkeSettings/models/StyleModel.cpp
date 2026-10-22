@@ -54,7 +54,10 @@ void FillSchemeFallbacks(std::map<std::string, unsigned int>& c, bool dark) {
                                          : c["back_color"]));
   const unsigned secondary = dark ? 0x8CFFFFFFu : 0x7F000000u;
   put("comment_text_color", secondary);
-  put("hilited_comment_text_color", secondary);
+  // 高亮候选的注释跟「高亮候选文字」兜底(mac 同语义:highlightedCommentTextColor
+  // ?? highlightedCandidateTextColor)。不能跟次要灰:深色方案的次要灰接近白,
+  // 而这类方案(如纯粹的形式)高亮底色本身就是近白 → 白底白字,注释直接消失
+  put("hilited_comment_text_color", c["hilited_candidate_text_color"]);
 }
 
 QString valueOf(const QVariantMap& opt) {
@@ -152,9 +155,9 @@ StyleControlModel::StyleControlModel(QObject* parent)
   addCombo(kColor, QStringLiteral(u"深色配色方案"),
            QStringLiteral("color_scheme_dark"), QVariantList(), QString(),
            QStringLiteral(u"系统切到深色时改用它"));
-  addSlider(kColor, QStringLiteral(u"背景透明度"),
+  addSlider(kColor, QStringLiteral(u"窗口透明度"),
             QStringLiteral("alpha"), 0, 1, QStringLiteral("0.00"), 0.05,
-            QStringLiteral(u"1 = 全透明,0 = 不透明"), /*invert=*/true);
+            QStringLiteral(u"背景、文字和高亮一起透明；0 不透明，1 全透明"), /*invert=*/true);
 
   const QString kFont = QStringLiteral(u"字体");
   // 字体名从机器上装的字体里挑。首项是空值,与配置语义一致(空 = 跟随系统)
@@ -387,6 +390,11 @@ bool StyleControlModel::save(UIStyleSettings& settings) {
     changed = true;
   }
   return changed;
+}
+
+void StyleControlModel::markSaved() {
+  for (auto& row : rows_)
+    row.init = asText(row);
 }
 
 void StyleControlModel::resetDefaults() {
@@ -639,7 +647,7 @@ void StyleModel::updatePreview() {
       {QStringLiteral("fontPoint"), fontSize_},
       {QStringLiteral("labelPoint"), labelPoint},
       {QStringLiteral("commentPoint"),
-       settings_.GetStyleInt("comment_font_point", 16)},
+       settings_.GetStyleInt("comment_font_point", 0)},
       {QStringLiteral("fontFamily"), family},
       {QStringLiteral("fontWeight"), weight},
       {QStringLiteral("horizontal"), horizontal},
@@ -665,6 +673,7 @@ void StyleModel::resetDefaults() {
 }
 
 bool StyleModel::save() {
+  saveSucceeded_ = true;
   // 没载过值的页没有「用户改动」可言:行表还停在兜底值,而每项的 init 是空串,
   // 逐项比较会把它们全判成「改过」,把默认值写进配置。曾经发生过——在 AI 页改一个开关
   // 后保存,saveAndDeploy 连带保存本页,label_font_point 被写成 0,候选序号就此消失。
@@ -689,14 +698,17 @@ bool StyleModel::save() {
     changed = true;
   if (!changed)
     return false;
-  if (!settings_.Save())
+  if (!settings_.Save()) {
+    saveSucceeded_ = false;
     return false;
+  }
   // 保存成功后同步快照,否则再次保存会把同一改动再写一遍
   activeScheme_ = scheme;
   activeFontSize_ = fontSize_;
   activeHorizontal_ = horizontal;
   // 预览立即跟随:metrics 里的 inlinePreedit/间距/圆角等读自内存表,
   // 不重算的话预览停在旧值 —— 表现为「实际生效了,预览没变」
+  styleControls_->markSaved();
   updatePreview();
   return true;
 }

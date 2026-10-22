@@ -11,12 +11,12 @@ PageScroll {
 
   Card {
     Layout.fillWidth: true
-    title: "菜单栏"
+    title: "通知"
 
     ComboRow {
       Layout.fillWidth: true
       showDivider: false
-      label: "通知"
+      label: "显示通知"
       fieldWidth: 130
       options: app.general.notificationOptions
       value: app.general.notificationsMode

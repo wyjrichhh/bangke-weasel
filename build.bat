@@ -23,7 +23,7 @@ if not defined RELEASE_BUILD (
   git --version >nul 2>&1
   if not errorlevel 1 (
     rem FILEVERSION 第四段取总提交数:标签匹配法在无匹配标签时静默得 0,
-    rem 同版本号重打会被 MSI 按"版本不更高"跳过(bangke.dll 陈旧文件之坑)
+    rem 此字段仅为二进制构建标签;正式升级须提高前三段版本
     for /f "delims=" %%i in ('git rev-list HEAD --count') do (
       set BANGKE_BUILD=%%i
     )
@@ -120,10 +120,13 @@ if %build_settings% == 0 (
   set build_bangke=1
 ))))))
 
-rem quit BangkeServer.exe before building
+rem Stop only when rebuilding native payloads; settings-only builds do not own the server.
 cd /d %BANGKE_ROOT%
-if exist output\BangkeServer.exe (
-  output\BangkeServer.exe /q
+set stop_server=%build_bangke%
+if %build_rime% == 1 set stop_server=1
+if %build_opencc% == 1 set stop_server=1
+if %stop_server% == 1 (
+  if exist output\BangkeServer.exe output\BangkeServer.exe /q
 )
   rem AI 预测模型:models\predict_models 不入库,存在才随产物打包
   if exist models\predict_models (
@@ -253,7 +256,7 @@ rem build boost
     define=BOOST_USE_WINAPI_VERSION=0x0603^
     toolset=%BJAM_TOOLSET%^
     link=static^
-    runtime-link=static^
+    runtime-link=static,shared^
     --build-type=complete
 
   set BJAM_OPTIONS_X64=%BJAM_OPTIONS_COMMON%^
@@ -304,7 +307,7 @@ copy /Y rime-ice-x\symbols_caps_v.yaml output\data\ >nul
 copy /Y rime-ice-x\custom_phrase.txt output\data\ >nul
 rem 方案只保留 明月/雾凇(melt_eng/radical 仅挂词库,不装独立 schema)
 for %%f in (output\data\*.schema.yaml) do (
-  echo %%~nf | findstr /r /c:"^luna_pinyin$" /c:"^rime_ice$" >nul || del "%%f"
+  if /I not "%%~nxf"=="luna_pinyin.schema.yaml" if /I not "%%~nxf"=="rime_ice.schema.yaml" del "%%f"
 )
 copy /Y data\weasel.yaml output\data\ >nul
 rem 拼音注释内容源:开关走 style/comment_font_point(渲染端门控),
@@ -402,7 +405,7 @@ rem ---------------------------------------------------------------------------
   rem 相应 DLL 一起铺出来;漏了它 exe 起得来但 import 全找不到
   rem --no-opengl-sw 保留:Qt6 的 Quick 走 RHI,D3D11 优先,且软件兜底是 CPU 光栅化,
   rem 不需要 Mesa 那份 opengl32sw.dll(约 20MB)。若哪天在无 D3D11 的机器上白屏,去掉它再打
-  "%QT_DIR%\bin\windeployqt" --release --no-translations --no-system-d3d-compiler --no-opengl-sw --compiler-runtime --qmldir BangkeSettings output\BangkeSettings.exe
+  "%QT_DIR%\bin\windeployqt" --release --no-translations --no-system-d3d-compiler --no-opengl-sw --compiler-runtime --qmldir BangkeSettings\qml output\BangkeSettings.exe
   rem drop what nothing can load; the list and reasoning live in the script
   powershell -NoProfile -ExecutionPolicy Bypass -File installer\trim_output.ps1 -OutputDir output
   if errorlevel 1 goto error

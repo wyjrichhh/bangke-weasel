@@ -1,19 +1,19 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import Bangke.Pages
 
-// mac 分段选择器(NSSegmentedControl):灰底轨道,选中段是浮起的白色圆角块。
-// options 收 [{label, value}];宽度按内容,不拉伸。
+// 紧凑分段导航，共享焦点、键盘与选中态。
 Rectangle {
   id: seg
   property var options: []
   property var value
   signal edited(var value)
 
-  implicitHeight: 24
+  implicitHeight: Theme.controlHeight + 4
   implicitWidth: track.implicitWidth + 4
-  radius: 6
-  color: Theme.dark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.06)
+  radius: Theme.fieldRadius
+  color: Theme.hairSoft
 
   function pick(o) {
     return o.value !== undefined ? o.value : o
@@ -29,31 +29,32 @@ Rectangle {
     Repeater {
       model: seg.options
 
-      delegate: Rectangle {
+      delegate: AbstractButton {
+        id: segment
         readonly property bool on: seg.pick(modelData) === seg.value
         readonly property var modelEntry: modelData
         Layout.preferredHeight: track.height
         Layout.preferredWidth: label.implicitWidth + 22
-        radius: 4
-        color: on ? (Theme.dark ? "#48484A" : Theme.surface) : "transparent"
-        border.width: on && !Theme.dark ? 1 : 0
-        border.color: Qt.rgba(0, 0, 0, 0.08)
+        onClicked: seg.edited(seg.pick(modelData))
+        background: Rectangle {
+          radius: 6
+          color: segment.on ? Theme.surface : segment.hovered ? Theme.hairSoft : "transparent"
+          border.width: segment.activeFocus ? 1 : 0
+          border.color: Theme.accent
+        }
 
-        Txt {
+        contentItem: Txt {
           id: label
-          anchors.centerIn: parent
+          horizontalAlignment: Text.AlignHCenter
+          verticalAlignment: Text.AlignVCenter
           text: typeof modelEntry === "object" ? (modelEntry.label !== undefined ? modelEntry.label
                                                                                  : String(modelEntry.value))
                                                : String(modelEntry)
-          color: Theme.ink
+          color: segment.on ? Theme.accent : Theme.ink2
           font.pixelSize: Theme.subSize
         }
 
-        MouseArea {
-          anchors.fill: parent
-          cursorShape: Qt.PointingHandCursor
-          onClicked: seg.edited(seg.pick(modelData))
-        }
+
       }
     }
   }

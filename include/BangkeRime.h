@@ -168,16 +168,14 @@ class BangkeRimeHandler : public bangke::RequestHandler {
   // 同步。但取 API 串行权只许 try_lock——管道线程持有它时可能正阻塞在 SetWindowPos 这类
   // 跨线程窗口调用上，而那个调用等的正是本线程，死等就成环（见 AiPumpArm）。
   //
-  // 每拍都是一整趟 Compose：结果落没落地只能靠 Compose 去问，pending 是插件在 Query 里
-  // 写的、Query 只在 Compose 里跑。但这一拍实测只要 0.1-2ms（p50 0.11ms，见日志里
-  // soft_cursor 通知到该拍最后一行的时间差），定频 150ms 的占用率约 1%，不值得为此
-  // 拉长间隔——间隔就是「推理落地」到「候选浮现」的延迟，拉长了 AI 候选就撞不上打字
-  // 之间的停顿。超时给够，否则长尾预测永远等不到。
+  // 每拍都可能执行完整 Compose；长输入时按 150 -> 300 -> 600 ms 退避，
+  // 避免占用消息线程。超时覆盖推理长尾，退出和失焦仍立即停止。
   static constexpr UINT_PTR kAiPumpTimerId = 0x424B4149;  // 'BKAI'
   static constexpr UINT kAiPumpIntervalMs = 150;
   static constexpr DWORD kAiPumpTimeoutMs = 10000;
   BangkeSessionId m_ai_pump_ipc_id = 0;
   DWORD m_ai_pump_deadline = 0;
+  UINT m_ai_pump_interval = kAiPumpIntervalMs;
   static std::string m_message_type;
   static std::string m_message_value;
   static std::string m_message_label;

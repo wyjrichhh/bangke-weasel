@@ -6,14 +6,14 @@
 #define CLSID_STRLEN 38  // strlen("{xxxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxx}")
 
 static const char c_szInfoKeyPrefix[] = "CLSID\\";
-static const char c_szTipKeyPrefix[] = "Software\\Microsft\\CTF\\TIP\\";
+static const char c_szTipKeyPrefix[] = "Software\\Microsoft\\CTF\\TIP\\";
 static const char c_szInProcSvr32[] = "InprocServer32";
 static const char c_szModelName[] = "ThreadingModel";
 
 HKL FindIME(LANGID langid) {
   HKL hKL = NULL;
   WCHAR key[9];
-  HKEY hKey;
+  HKEY hKey = nullptr;
   LSTATUS ret =
       RegOpenKeyExW(HKEY_LOCAL_MACHINE,
                     L"SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts", 0,
@@ -22,22 +22,22 @@ HKL FindIME(LANGID langid) {
     for (DWORD id = (0xE0200000 | langid);
          hKL == NULL && id <= (0xE0FF0000 | langid); id += 0x10000) {
       StringCchPrintfW(key, _countof(key), L"%08X", id);
-      HKEY hSubKey;
+      HKEY hSubKey = nullptr;
       ret = RegOpenKeyExW(hKey, key, 0, KEY_READ, &hSubKey);
       if (ret == ERROR_SUCCESS) {
-        WCHAR data[32];
+        WCHAR data[32] = {};
         DWORD type;
         DWORD size = sizeof data;
         ret = RegQueryValueExW(hSubKey, L"Ime File", NULL, &type, (LPBYTE)data,
                                &size);
         if (ret == ERROR_SUCCESS && type == REG_SZ &&
-            _wcsicmp(data, L"weasel.ime") == 0)
-          hKL = (HKL)id;
+            _wcsicmp(data, L"bangke.ime") == 0)
+          hKL = reinterpret_cast<HKL>(static_cast<ULONG_PTR>(id));
       }
-      RegCloseKey(hSubKey);
+      if (hSubKey) RegCloseKey(hSubKey);
     }
   }
-  RegCloseKey(hKey);
+  if (hKey) RegCloseKey(hKey);
   return hKL;
 }
 
@@ -53,7 +53,7 @@ BOOL RegisterProfiles() {
   std::wstring profile{};
   DWORD dwSize = GetEnvironmentVariable(L"TEXTSERVICE_PROFILE", szProfile,
                                         ARRAYSIZE(szProfile));
-  if (dwSize > 0) {
+  if (dwSize > 0 && dwSize < ARRAYSIZE(szProfile)) {
     profile = szProfile;
   }
   BOOL hansEnable = (profile == L"hans");
@@ -67,11 +67,14 @@ BOOL RegisterProfiles() {
 
   const auto text_service_desc = get_bangke_ime_name();
   const WCHAR* text_service_desc_str = text_service_desc.c_str();
-  ULONG text_service_desc_len = text_service_desc.size() * sizeof(wchar_t);
+  // RegisterProfile takes a character count, not a byte count.
+  const ULONG text_service_desc_len = static_cast<ULONG>(text_service_desc.size());
 
   WCHAR achIconFile[MAX_PATH];
   ULONG cchIconFile =
       GetModuleFileNameW(g_hInst, achIconFile, ARRAYSIZE(achIconFile));
+
+  if (!cchIconFile || cchIconFile >= ARRAYSIZE(achIconFile)) return FALSE;
 
   const auto register_profile = [&](LANGID langId, HKL hkl, BOOL enable) {
     return pInputProcessorProfileMgr->RegisterProfile(
@@ -216,12 +219,12 @@ BOOL RegisterServer() {
       dw = GetModuleFileNameA(g_hInst, achFileName, ARRAYSIZE(achFileName));
 
       fRet &= RegSetValueExA(hSubKey, NULL, 0, REG_SZ, (BYTE*)achFileName,
-                             (strlen(achFileName) + 1) * sizeof(char)) ==
+                             static_cast<DWORD>((strlen(achFileName) + 1) * sizeof(char))) ==
               ERROR_SUCCESS;
       fRet &= RegSetValueExA(hSubKey, c_szModelName, 0, REG_SZ,
                              (BYTE*)TEXTSERVICE_MODEL,
                              sizeof TEXTSERVICE_MODEL) == ERROR_SUCCESS;
-      RegCloseKey(hSubKey);
+      if (hSubKey) RegCloseKey(hSubKey);
     }
     RegCloseKey(hKey);
   }
@@ -242,5 +245,5 @@ void UnregisterServer() {
                       tipKey + ARRAYSIZE(c_szTipKeyPrefix) - 1))
     return;
   memcpy(tipKey, c_szTipKeyPrefix, sizeof(c_szTipKeyPrefix) - 1);
-  RecurseDeleteKeyA(HKEY_CLASSES_ROOT, tipKey);
+  RecurseDeleteKeyA(HKEY_LOCAL_MACHINE, tipKey);
 }
