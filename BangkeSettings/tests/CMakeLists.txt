@@ -59,15 +59,24 @@ if(WIN32)
 endif()
 
 if(WIN32)
-  set(_style_qml ../qml/Theme.qml ../qml/Txt.qml ../qml/Btn.qml
-      ../qml/preview/MacPreviewStrip.qml ../qml/preview/MiniPanel.qml)
-  foreach(_file IN LISTS _style_qml)
-    get_filename_component(_name "${_file}" NAME)
-    set_source_files_properties("${_file}" PROPERTIES QT_RESOURCE_ALIAS "${_name}")
+  set(_style_imports "${CMAKE_CURRENT_BINARY_DIR}/stylepalette-imports")
+  set(_style_module "${_style_imports}/Bangke/Pages")
+  file(MAKE_DIRECTORY "${_style_module}")
+  file(WRITE "${_style_module}/qmldir" "module Bangke.Pages\n")
+  foreach(_name Theme Txt Btn MacPreviewStrip MiniPanel)
+    if(_name STREQUAL "MacPreviewStrip" OR _name STREQUAL "MiniPanel")
+      set(_source "../qml/preview/${_name}.qml")
+    else()
+      set(_source "../qml/${_name}.qml")
+    endif()
+    configure_file("${_source}" "${_style_module}/${_name}.qml" COPYONLY)
+    if(_name STREQUAL "Theme")
+      file(APPEND "${_style_module}/qmldir" "singleton ")
+    endif()
+    file(APPEND "${_style_module}/qmldir" "${_name} 1.0 ${_name}.qml\n")
   endforeach()
-  qt_add_qml_module(stylepalette_test URI Bangke.Pages RESOURCE_PREFIX /qt/qml NO_CACHEGEN
-                    OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/stylepalette/Bangke/Pages"
-                    QML_FILES ${_style_qml})
+  target_compile_definitions(stylepalette_test PRIVATE
+    BANGKE_STYLE_QML_IMPORT_PATH="${_style_imports}")
   target_link_libraries(stylepalette_test PRIVATE Qt6::Quick Qt6::Qml)
   set_tests_properties(stylepalette PROPERTIES ENVIRONMENT
     "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_PLUGIN_PATH=${_qt_prefix}/plugins;QML_IMPORT_PATH=${_qt_prefix}/qml;QT_QPA_FONTDIR=$ENV{WINDIR}/Fonts")

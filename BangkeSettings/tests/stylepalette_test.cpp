@@ -62,6 +62,7 @@ int main(int argc, char** argv) {
   {
     StyleModel model;
     QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(BANGKE_STYLE_QML_IMPORT_PATH));
     engine.rootContext()->setContextProperty("styleModel", &model);
     QQmlComponent mock(&engine);
     mock.setData("import QtQml; QtObject {property QtObject style: styleModel}", QUrl());
