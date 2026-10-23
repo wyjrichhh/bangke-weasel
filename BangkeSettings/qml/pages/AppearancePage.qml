@@ -29,12 +29,11 @@ RowLayout {
         }
       }
 
-
     }
 
     Card {
       Layout.fillWidth: true
-      title: "文字"
+      title: "文字与形态"
 
       StyleRowGroup {
         Layout.fillWidth: true
@@ -48,26 +47,7 @@ RowLayout {
         min: 8
         max: 48
         value: app.style.fontSize
-        onEdited: function (v) {
-          app.style.fontSize = Math.round(v)
-        }
-      }
-    }
-
-    Card {
-      Layout.fillWidth: true
-      title: "布局"
-
-      ComboRow {
-        Layout.fillWidth: true
-        showDivider: false
-        label: "候选排列"
-
-        options: app.style.layoutOptions
-        value: app.style.layout
-        onEdited: function (v) {
-          app.style.layout = v
-        }
+        onEdited: function (v) { app.style.fontSize = Math.round(v) }
       }
 
       StyleRowGroup {
@@ -75,6 +55,14 @@ RowLayout {
         source: app.style.styleControls
         section: "布局"
         includeKeys: ["layout/corner_radius"]
+      }
+
+      ComboRow {
+        Layout.fillWidth: true
+        label: "候选排列"
+        options: app.style.layoutOptions
+        value: app.style.layout
+        onEdited: function (v) { app.style.layout = v }
       }
     }
 

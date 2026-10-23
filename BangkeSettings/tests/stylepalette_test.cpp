@@ -6,7 +6,6 @@
 #include <QQmlContext>
 #include <QQmlComponent>
 #include <QQuickItem>
-#include <QQuickWindow>
 #include <QColor>
 #include <filesystem>
 #include <iostream>
@@ -77,13 +76,9 @@ int main(int argc, char** argv) {
       std::cerr << component.errorString().toStdString();
       return 6;
     }
-    QQuickWindow window;
-    root->setParent(&window);
-    root->setParentItem(window.contentItem());
+    root->setParent(&engine);
     root->setWidth(550);
     root->setHeight(430);
-    window.resize(550, 430);
-    window.show();
     model.load();
     if (!paletteMatches(model)) result = 3;
     auto* theme = engine.singletonInstance<QObject*>("Bangke.Pages", "Theme");
@@ -95,7 +90,7 @@ int main(int argc, char** argv) {
       app.processEvents();
       const auto face = background->property("color").value<QColor>();
       const auto active = highlight->property("color").value<QColor>();
-      std::cout << "rendered " << dark << ": " << face.name().toStdString()
+      std::cout << resolved  << dark << ": " << face.name().toStdString()
                 << " / " << active.name().toStdString() << '\n';
       return face == QColor(dark ? "#171c23" : "#f6f3ed") &&
              active == QColor(dark ? "#94c8bc" : "#785330");
