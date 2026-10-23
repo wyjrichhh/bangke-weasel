@@ -66,6 +66,7 @@ if(WIN32)
     set_source_files_properties("${_file}" PROPERTIES QT_RESOURCE_ALIAS "${_name}")
   endforeach()
   qt_add_qml_module(stylepalette_test URI Bangke.Pages RESOURCE_PREFIX /qt/qml
+                    OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/stylepalette/Bangke/Pages"
                     QML_FILES ${_style_qml})
   target_link_libraries(stylepalette_test PRIVATE Qt6::Quick Qt6::Qml)
   set_tests_properties(stylepalette PROPERTIES ENVIRONMENT
