@@ -1,6 +1,6 @@
 #pragma once
 
-#include <rime_levers_api.h>
+#include "Levers.h"
 #include <cstdint>
 #include <map>
 #include <string>
