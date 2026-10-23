@@ -98,12 +98,10 @@ void AppController::onPageChanged(int index) {
     switcher_->load();
     if (configurator_->BeginDictSession())
       dict_->setSessionActive(true);
-  } else if (index == 0) {
+  } else if (index >= 0 && index <= 2) {
     style_->load();
-  } else if (index == 1) {
     general_->load();
-  } else if (index == 2) {
-    ai_->load();
+    if (index == 2) ai_->load();
   }
 }
 

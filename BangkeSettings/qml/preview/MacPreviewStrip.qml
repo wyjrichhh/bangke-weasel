@@ -7,6 +7,10 @@ ColumnLayout {
   id: strip
   spacing: 12
   property bool longSample: false
+  property int previewPageSize: -1
+  property bool showComments: true
+  property bool previewAi: false
+  onPreviewPageSizeChanged: refreshPreview()
 
   function copyMap(source) {
     let result = {}
@@ -18,8 +22,11 @@ ColumnLayout {
   function refreshPreview() {
     // Snapshot QVariantMaps after their notify signal; nested bindings can retain
     // the empty maps created before the C++ model's deferred first load.
+    if (!panel) return
     panel.colors = copyMap(Theme.dark ? app.style.previewDark : app.style.previewLight)
-    panel.m = copyMap(app.style.previewMetrics)
+    let metrics = copyMap(app.style.previewMetrics)
+    if (previewPageSize > 0) metrics.pageSize = previewPageSize
+    panel.m = metrics
   }
 
   Component.onCompleted: refreshPreview()
@@ -55,15 +62,22 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.fillHeight: true
         clip: true
-        contentWidth: panel.width
-        contentHeight: panel.height
+        contentWidth: panel.width + 32
+        contentHeight: panel.height + 32
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
         MiniPanel {
           id: panel
+          x: 16
+          y: 16
           objectName: "candidatePreview"
           longSample: strip.longSample
+          showComments: strip.showComments
+          aiSettings: strip.previewAi ? ({
+            enabled: app.ai.enabled, aiOnly: app.ai.aiOnly,
+            filterPunctuation: app.ai.filterPunctuation, targetIndex: app.ai.targetIndex
+          }) : null
           zoom: 1
         }
       }
@@ -75,5 +89,5 @@ ColumnLayout {
       Txt { text: "原始字号 · 超出区域可滚动查看"; color: Theme.ink2; font.pixelSize: Theme.hintSize }
     }
   }
-  Txt { text: "调整左侧设置，即可查看候选窗的变化。"; color: Theme.ink2 }
+  Txt { text: strip.previewAi ? "AI 示例用于预览样式与位置，不代表真实模型输出。" : "调整左侧设置，即可查看候选窗的变化。"; color: Theme.ink2; Layout.fillWidth: true; wrapMode: Text.Wrap }
 }

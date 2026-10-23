@@ -35,6 +35,28 @@ TestCase {
     }
   }
 
+  function test_fullPageAndAiExamplesFollowDrafts() {
+    const original = preview.m
+    preview.m = Object.assign({}, original, {pageSize: 20, horizontal: false})
+    compare(preview.cands.length, 20)
+    const fullHeight = preview.unitH
+    const dictionaryWidth = preview.unitW
+    preview.aiSettings = {enabled: true, aiOnly: true, filterPunctuation: true, targetIndex: 0}
+    compare(preview.cands.length, 1)
+    compare(preview.cands[0].text, "让表达更自然")
+    verify(preview.unitH < fullHeight)
+    verify(preview.unitW > dictionaryWidth)
+    const cleanWidth = preview.unitW
+    preview.aiSettings = {enabled: true, aiOnly: true, filterPunctuation: false, targetIndex: 0}
+    compare(preview.cands[0].text, "，让表达更自然。")
+    verify(preview.unitW > cleanWidth)
+    preview.aiSettings = {enabled: true, aiOnly: false, filterPunctuation: true, targetIndex: 2}
+    compare(preview.cands[2].text, "让表达更自然")
+    compare(preview.cands[2].label, "3.")
+    preview.aiSettings = null
+    preview.m = original
+  }
+
   function test_previewOpacityIncludesHighlight() {
     const x = preview.x + 2
     const backY = preview.y + 2

@@ -120,6 +120,8 @@ RowLayout {
     }
   }
   MacPreviewStrip {
+    previewPageSize: app.general.pageSize
+    showComments: app.general.commentHints
     Layout.fillWidth: true
     Layout.preferredWidth: 550
     Layout.alignment: Qt.AlignTop

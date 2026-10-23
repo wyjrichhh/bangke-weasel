@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Bangke.Pages
 
 // 单块候选窗预览:配色/圆角/间距/字号/横竖排/字体全部取真实配置
@@ -18,10 +19,25 @@ Item {
   property var colors: ({})
   property var m: ({})
   property bool longSample: false
+  property bool showComments: true
+  property var aiSettings: null
   property real zoom: 1
-  property bool horizontal: m.horizontal === true
+  property bool horizontal: m.horizontal === true && m.verticalText !== true
   // 与 macOS 和 Windows 实际候选窗一致：合成后统一应用整窗透明度。
-  layer.enabled: opacity < 1
+  readonly property color shadowTint: tint("shadow_color", "#00000000")
+  readonly property real shadowRadius: m.shadowRadius !== undefined ? m.shadowRadius : 0
+  readonly property bool showsShadow: shadowRadius > 0 && shadowTint.a > 0
+  layer.enabled: opacity < 1 || showsShadow
+  layer.effect: showsShadow ? shadowEffect : null
+  Component {
+    id: shadowEffect
+    MultiEffect {
+      shadowEnabled: true
+      shadowColor: mini.shadowTint
+      shadowBlur: Math.min(1, mini.shadowRadius / 30)
+      shadowVerticalOffset: mini.shadowRadius / 3
+    }
+  }
   opacity: Math.max(0, Math.min(1, m.alpha !== undefined ? m.alpha : 1))
 
   // 样例池:首条高亮并带注释;显示条数 = 每页候选数(与实际一致)。
@@ -42,11 +58,22 @@ Item {
     { label: "8.", text: "塝棵", comment: "" },
     { label: "9.", text: "螃壳", comment: "" }
   ]
-  readonly property int visibleCount: {
-    var ps = m.pageSize !== undefined ? m.pageSize : 5
-    return Math.max(1, Math.min(candPool.length, ps))
+  readonly property int visibleCount: Math.max(1, Math.min(20, m.pageSize !== undefined ? m.pageSize : 5))
+  readonly property var cands: {
+    let result = []
+    for (let i = 0; i < visibleCount; ++i) {
+      let source = candPool[i % candPool.length]
+      result.push({label: String(m.labelFormat !== undefined ? m.labelFormat : "%s.").replace("%s", String(i + 1)), text: source.text, comment: showComments ? source.comment : ""})
+    }
+    if (aiSettings && aiSettings.enabled) {
+      let example = {label: "", text: aiSettings.filterPunctuation ? "让表达更自然" : "，让表达更自然。", comment: "AI 示例"}
+      if (aiSettings.aiOnly) return [example]
+      result.splice(Math.min(result.length, Math.max(0, aiSettings.targetIndex)), 0, example)
+      result = result.slice(0, visibleCount)
+      for (let j = 0; j < result.length; ++j) result[j].label = String(m.labelFormat !== undefined ? m.labelFormat : "%s.").replace("%s", String(j + 1))
+    }
+    return result
   }
-  readonly property var cands: candPool.slice(0, visibleCount)
 
   function tint(key, fallback) {
     var c = Theme.argb(colors ? colors[key] : undefined, fallback)
@@ -91,7 +118,10 @@ Item {
     font.weight: mini.weight
   }
 
-  Metrics { id: mPre; text: "bang'ke"; font.pointSize: mini.pt(mini.fontPoint) }
+  readonly property string preeditText: m.preeditType === "preview" ? "蚌壳"
+                                       : m.preeditType === "preview_all" ? "蚌壳拼音让表达更自然"
+                                       : "bang'ke"
+  Metrics { id: mPre; text: mini.preeditText; font.pointSize: mini.pt(mini.fontPoint) }
   Metrics { id: m0l; text: mini.candAt(0).label; font.pointSize: mini.pt(mini.labelPoint) }
   Metrics { id: m0t; text: mini.candAt(0).text; font.pointSize: mini.pt(mini.fontPoint) }
   Metrics { id: m0c; text: mini.candAt(0).comment; font.pointSize: mini.pt(mini.commentPoint) }
@@ -112,6 +142,49 @@ Item {
   Metrics { id: m8l; text: mini.candAt(8).label; font.pointSize: mini.pt(mini.labelPoint) }
   Metrics { id: m8t; text: mini.candAt(8).text; font.pointSize: mini.pt(mini.fontPoint) }
 
+  Metrics { id: m9l; text: mini.candAt(9).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m9t; text: mini.candAt(9).text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m10l; text: mini.candAt(10).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m10t; text: mini.candAt(10).text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m11l; text: mini.candAt(11).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m11t; text: mini.candAt(11).text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m12l; text: mini.candAt(12).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m12t; text: mini.candAt(12).text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m13l; text: mini.candAt(13).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m13t; text: mini.candAt(13).text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m14l; text: mini.candAt(14).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m14t; text: mini.candAt(14).text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m15l; text: mini.candAt(15).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m15t; text: mini.candAt(15).text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m16l; text: mini.candAt(16).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m16t; text: mini.candAt(16).text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m17l; text: mini.candAt(17).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m17t; text: mini.candAt(17).text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m18l; text: mini.candAt(18).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m18t; text: mini.candAt(18).text; font.pointSize: mini.pt(mini.fontPoint) }
+  Metrics { id: m19l; text: mini.candAt(19).label; font.pointSize: mini.pt(mini.labelPoint) }
+  Metrics { id: m19t; text: mini.candAt(19).text; font.pointSize: mini.pt(mini.fontPoint) }
+
+  Metrics { id: m1c; text: mini.candAt(1).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m2c; text: mini.candAt(2).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m3c; text: mini.candAt(3).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m4c; text: mini.candAt(4).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m5c; text: mini.candAt(5).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m6c; text: mini.candAt(6).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m7c; text: mini.candAt(7).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m8c; text: mini.candAt(8).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m9c; text: mini.candAt(9).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m10c; text: mini.candAt(10).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m11c; text: mini.candAt(11).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m12c; text: mini.candAt(12).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m13c; text: mini.candAt(13).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m14c; text: mini.candAt(14).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m15c; text: mini.candAt(15).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m16c; text: mini.candAt(16).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m17c; text: mini.candAt(17).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m18c; text: mini.candAt(18).comment; font.pointSize: mini.pt(mini.commentPoint) }
+  Metrics { id: m19c; text: mini.candAt(19).comment; font.pointSize: mini.pt(mini.commentPoint) }
+
   // 样例池按「每页候选数」切片,探针却按池子的全长声明 —— 条数少于池子时
   // 后面的下标取不到值,直接下标会报 "Cannot read property 'label' of
   // undefined"(每页 1~4 个候选时 m4 就已经越界了)
@@ -120,10 +193,14 @@ Item {
                             : { label: "", text: "", comment: "" }
   }
   function lbl(i) {
-    return [m0l, m1l, m2l, m3l, m4l, m5l, m6l, m7l, m8l][i]
+    return [m0l, m1l, m2l, m3l, m4l, m5l, m6l, m7l, m8l, m9l, m10l, m11l, m12l, m13l, m14l, m15l, m16l, m17l, m18l, m19l][i]
   }
   function txt(i) {
-    return [m0t, m1t, m2t, m3t, m4t, m5t, m6t, m7t, m8t][i]
+    return [m0t, m1t, m2t, m3t, m4t, m5t, m6t, m7t, m8t, m9t, m10t, m11t, m12t, m13t, m14t, m15t, m16t, m17t, m18t, m19t][i]
+  }
+
+  function comment(i) {
+    return [m0c, m1c, m2c, m3c, m4c, m5c, m6c, m7c, m8c, m9c, m10c, m11c, m12c, m13c, m14c, m15c, m16c, m17c, m18c, m19c][i]
   }
 
   // 行高 = 正文字体的行高(TextMetrics.height),unit 值
@@ -134,7 +211,7 @@ Item {
     var c = cands[i]
     var w = lbl(i).advanceWidth + hiliteSpacing + txt(i).advanceWidth
     if (c.comment.length > 0 && commentVisible)
-      w += hiliteSpacing + m0c.advanceWidth
+      w += hiliteSpacing + comment(i).advanceWidth
     return w
   }
 
@@ -176,13 +253,19 @@ Item {
     anchors.fill: parent
     radius: zz(panelR)
     color: mini.tint("back_color", "#FFFFFF")
-    // 引擎只在 border_width > 0 时画边框(border_color 不透明),
-    // 预览同判 —— 不额外加描边
-    // 恒画 1px:Qt 的 Rectangle 边框是往内画的,按配置宽度(可能 9px)画会让
-    // 可见面缩进去,而高亮按引擎语义只让 border/2,两者对不上就露边。
-    // 引擎那边描边是以路径为中心画的,这里用 1px 近似即可
-    border.width: m.borderWidth !== undefined && m.borderWidth > 0 ? 1 : 0
-    border.color: mini.tint("border_color", "#FF808080")
+  }
+
+  Rectangle {
+    readonly property real stroke: m.borderWidth !== undefined ? zz(m.borderWidth) : 0
+    x: -stroke / 2
+    y: -stroke / 2
+    width: mini.width + stroke
+    height: mini.height + stroke
+    radius: zz(panelR) + stroke / 2
+    color: "transparent"
+    border.width: stroke
+    border.color: mini.tint("border_color", "#00000000")
+    z: 10
   }
 
   // 高亮块:引擎里 = 首候选的文字矩形,四边各外扩 hilite_padding ——
@@ -293,7 +376,7 @@ Item {
     y: zz(mini.marginY)
     height: zz(mini.rowH)
     verticalAlignment: Text.AlignVCenter
-    text: "bang'ke"
+    text: mini.preeditText
     color: mini.tint("text_color", "#FF000000")
     font.family: mini.family
     font.weight: mini.weight

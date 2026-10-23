@@ -68,6 +68,8 @@ inline std::map<std::string, unsigned int> NativeSchemeColors(bool dark) {
   const NativePalette& p = dark ? kNativeDark : kNativeLight;
   return {
       {"back_color", p.back_color},
+      {"border_color", 0},
+      {"shadow_color", 0},
       {"text_color", p.text_color},
       {"candidate_text_color", p.candidate_text_color},
       {"hilited_text_color", p.hilited_text_color},
