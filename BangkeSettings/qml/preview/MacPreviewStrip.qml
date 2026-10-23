@@ -8,6 +8,30 @@ ColumnLayout {
   spacing: 12
   property bool longSample: false
 
+  function copyMap(source) {
+    let result = {}
+    for (let key in source)
+      result[key] = source[key]
+    return result
+  }
+
+  function refreshPreview() {
+    // Snapshot QVariantMaps after their notify signal; nested bindings can retain
+    // the empty maps created before the C++ model's deferred first load.
+    panel.colors = copyMap(Theme.dark ? app.style.previewDark : app.style.previewLight)
+    panel.m = copyMap(app.style.previewMetrics)
+  }
+
+  Component.onCompleted: refreshPreview()
+  Connections {
+    target: app.style
+    function onPreviewChanged() { strip.refreshPreview() }
+  }
+  Connections {
+    target: Theme
+    function onDarkChanged() { strip.refreshPreview() }
+  }
+
   Txt { text: "实时预览"; color: Theme.ink2 }
   Rectangle {
     Layout.fillWidth: true
@@ -23,7 +47,7 @@ ColumnLayout {
         Layout.fillWidth: true
         Txt { text: "文稿 · 输入场景"; color: Theme.ink2 }
         Item { Layout.fillWidth: true }
-        Txt { text: "跟随系统深浅主题"; color: Theme.ink2 }
+        Txt { text: Theme.dark ? "深色预览" : "浅色预览"; color: Theme.ink2 }
       }
       Txt { text: app.style.previewMetrics.inlinePreedit === false ? "今天，" : "今天，bangke"; font.pixelSize: 18 }
       Flickable {
@@ -38,8 +62,7 @@ ColumnLayout {
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
         MiniPanel {
           id: panel
-          colors: Theme.dark ? app.style.previewDark : app.style.previewLight
-          m: app.style.previewMetrics
+          objectName: "candidatePreview"
           longSample: strip.longSample
           zoom: 1
         }

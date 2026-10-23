@@ -57,3 +57,17 @@ set_tests_properties(combo_ui PROPERTIES ENVIRONMENT
 if(WIN32)
   set_property(TEST combo_ui APPEND PROPERTY ENVIRONMENT "QT_QPA_FONTDIR=$ENV{WINDIR}/Fonts")
 endif()
+
+if(WIN32)
+  set(_style_qml ../qml/Theme.qml ../qml/Txt.qml ../qml/Btn.qml
+      ../qml/preview/MacPreviewStrip.qml ../qml/preview/MiniPanel.qml)
+  foreach(_file IN LISTS _style_qml)
+    get_filename_component(_name "${_file}" NAME)
+    set_source_files_properties("${_file}" PROPERTIES QT_RESOURCE_ALIAS "${_name}")
+  endforeach()
+  qt_add_qml_module(stylepalette_test URI Bangke.Pages RESOURCE_PREFIX /qt/qml
+                    QML_FILES ${_style_qml})
+  target_link_libraries(stylepalette_test PRIVATE Qt6::Quick Qt6::Qml)
+  set_tests_properties(stylepalette PROPERTIES ENVIRONMENT
+    "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_PLUGIN_PATH=${_qt_prefix}/plugins;QML_IMPORT_PATH=${_qt_prefix}/qml;QT_QPA_FONTDIR=$ENV{WINDIR}/Fonts")
+endif()

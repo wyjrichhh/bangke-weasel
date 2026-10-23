@@ -172,6 +172,7 @@ Item {
 
   Rectangle {
     id: panelFace
+    objectName: "candidateBackground"
     anchors.fill: parent
     radius: zz(panelR)
     color: mini.tint("back_color", "#FFFFFF")
@@ -226,6 +227,7 @@ Item {
 
   Rectangle {
     id: hilite
+    objectName: "candidateHighlight"
     // 上沿 = 候选行顶减去纵向外扩(有编码行时就在编码行下方);贴面板上沿时再
     // 让出半个线宽给边框。最后两个边各自夹进面板内沿 —— mac 的 expand() 就是
     // 把高亮夹到 outerBox:padding_y 比 margin_y 大时,按 padding 外扩的高亮
