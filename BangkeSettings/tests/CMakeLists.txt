@@ -18,6 +18,13 @@ if(WIN32)
   target_link_libraries(aimodel_test PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets "${CMAKE_CURRENT_SOURCE_DIR}/../../lib64/rime.lib")
   target_compile_options(aimodel_test PRIVATE /utf-8)
   add_test(NAME aimodel COMMAND aimodel_test)
+  add_executable(stylepalette_test stylepalette_test.cpp ../models/StyleModel.cpp
+                 ../models/StyleModel.h ../UIStyleSettings.cpp ../UIStyleSettings.h)
+  target_include_directories(stylepalette_test PRIVATE .. ../../include ../../librime/include)
+  target_link_libraries(stylepalette_test PRIVATE Qt6::Widgets "${CMAKE_CURRENT_SOURCE_DIR}/../../lib64/rime.lib")
+  target_compile_options(stylepalette_test PRIVATE /utf-8)
+  add_test(NAME stylepalette COMMAND stylepalette_test)
+  set_tests_properties(stylepalette PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
 
 add_executable(coloropacity_test coloropacity_test.cpp)
