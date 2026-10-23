@@ -82,20 +82,20 @@ powershell -File scripts\fetch-ai-predict.ps1 -Source D:\ai.bundle -Ref <branch>
 
 ## CTranslate2（AI 插件的推理后端）
 
-插件静态链接 CT2，而 `CTRANSLATE2_ROOT` 是 `build.bat` 写死的
-`C:\dev\ct2-install\lib\ctranslate2.lib` 在不在来决定的。缺了它，要么插件配置阶段报
-`CTranslate2 not found`，要么退回插件自带的 `make deps`（要拉 `deps/CTranslate2` 子模块
-再整个重编一遍）。
+插件静态链接 CT2，而 `CTRANSLATE2_ROOT` 可在 `env.bat` 指定，默认使用
+`C:\dev\ct2-4.8.3-install`。缺少静态库时构建直接失败。Windows 应使用
+CTranslate2 4.8.3，其中包含 Ruy 和非 OpenMP 线程池的退出死锁修复；
+旧版 4.7.1 会在多线程推理后的清理阶段卡住。
 
-这台机器上那份是 CT2 **4.7.1** 从源码静态编的，配置如下：
+这台机器上那份是 CT2 **4.8.3** 从源码静态编的，配置如下：
 
 ```bat
-cmake -S C:\dev\ct2-src -B C:\dev\ct2-src\build -G "Visual Studio 17 2022" -A x64 ^
-  -DCMAKE_INSTALL_PREFIX=C:/dev/ct2-install ^
-  -DBUILD_SHARED_LIBS=OFF ^
+cmake -S C:\dev\ct2-4.8.3-src -B C:\dev\ct2-4.8.3-src\build -G "Visual Studio 17 2022" -A x64 ^
+  -DCMAKE_INSTALL_PREFIX=C:/dev/ct2-4.8.3-install ^
+  -DBUILD_CLI=OFF -DBUILD_SHARED_LIBS=OFF ^
   -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ^
   -DOPENMP_RUNTIME=NONE -DWITH_CUDA=OFF -DWITH_MKL=OFF -DWITH_DNNL=OFF -DWITH_RUY=ON
-cmake --build C:\dev\ct2-src\build --config Release --target install
+cmake --build C:\dev\ct2-4.8.3-src\build --config Release --target install
 ```
 
 CT2 与 AI 插件静态链接进同一个 rime.dll，因此使用 `/MT`；
