@@ -17,6 +17,7 @@ Item {
 
   property var colors: ({})
   property var m: ({})
+  property bool longSample: false
   property real zoom: 1
   property bool horizontal: m.horizontal === true
   // 与 macOS 和 Windows 实际候选窗一致：合成后统一应用整窗透明度。
@@ -26,7 +27,11 @@ Item {
   // 样例池:首条高亮并带注释;显示条数 = 每页候选数(与实际一致)。
   // 单行横排也曾限成 2 个(怕 zoom 把字号压小),但 mac 预览是照实画满
   // 一页的 —— 条数不一致比字号更刺眼,改回跟随每页候选数。
-  readonly property var candPool: [
+  readonly property var candPool: longSample ? [
+    { label: "1.", text: "让每一次输入都恰到好处", comment: "AI" },
+    { label: "2.", text: "今天的表达更自然一些", comment: "" },
+    { label: "3.", text: "把想法写下来", comment: "" }
+  ] : [
     { label: "1.", text: "蚌壳", comment: "bàng ké" },
     { label: "2.", text: "帮客", comment: "" },
     { label: "3.", text: "绑客", comment: "" },

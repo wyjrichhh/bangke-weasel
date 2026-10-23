@@ -8,6 +8,9 @@ Column {
   property var source: null
   property string section: ""
 
+  property var includeKeys: []
+  property var excludeKeys: []
+
   spacing: 0
 
   Repeater {
@@ -15,7 +18,9 @@ Column {
 
     delegate: StyleRow {
       width: group.width
-      visible: model.section === group.section
+      visible: model.section === group.section &&
+               (group.includeKeys.length === 0 || group.includeKeys.indexOf(model.key) >= 0) &&
+               group.excludeKeys.indexOf(model.key) < 0
       showDivider: y > 0
     }
   }

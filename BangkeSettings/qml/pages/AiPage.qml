@@ -33,7 +33,7 @@ ColumnLayout {
       Layout.fillWidth: true
       showDivider: false
       label: "输入方案"
-      fieldWidth: 220
+
       options: schemaOptions
       value: app.ai.currentSchema
       onEdited: function (value) { app.ai.currentSchema = value }
@@ -200,7 +200,7 @@ ColumnLayout {
       Layout.fillWidth: true
       showDivider: false
       label: "运算设备"
-      fieldWidth: 110
+
       options: app.ai.deviceOptions
       value: app.ai.device
       onEdited: function (v) {

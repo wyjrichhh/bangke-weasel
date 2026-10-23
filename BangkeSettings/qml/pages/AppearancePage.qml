@@ -2,115 +2,139 @@ import QtQuick
 import QtQuick.Layouts
 import Bangke.Pages
 
-// 紧凑实时预览固定在上方，下方按主题分组滚动编辑。
-ColumnLayout {
+// Keep the editor scroll independent of the fixed preview.
+RowLayout {
   id: page
-  property string section: "颜色"
-  spacing: 14
-
-  MacPreviewStrip {
-    Layout.fillWidth: true
-  }
-
-  SectionTabs {
-    Layout.fillWidth: true
-    options: ["颜色", "字体", "布局", "显示", "格式"]
-    value: page.section
-    onEdited: function (value) { page.section = value }
-  }
+  property bool advanced: false
+  spacing: 28
 
   PageScroll {
     Layout.fillWidth: true
     Layout.fillHeight: true
+    Layout.preferredWidth: 550
 
-  Card {
-    Layout.fillWidth: true
-    visible: page.section === "颜色"
-
-    ComboRow {
+    Card {
       Layout.fillWidth: true
-      showDivider: false
-      label: "配色方案"
-      fieldWidth: 190
-      options: app.style.schemes
-      value: app.style.colorScheme
-      onEdited: function (v) {
-        app.style.colorScheme = v
+      title: "配色与主题"
+
+      ComboRow {
+        Layout.fillWidth: true
+        showDivider: false
+        label: "配色方案"
+
+        options: app.style.schemes
+        value: app.style.colorScheme
+        onEdited: function (v) {
+          app.style.colorScheme = v
+        }
+      }
+
+
+    }
+
+    Card {
+      Layout.fillWidth: true
+      title: "文字"
+
+      StyleRowGroup {
+        Layout.fillWidth: true
+        source: app.style.styleControls
+        section: "字体"
+      }
+
+      SliderRow {
+        Layout.fillWidth: true
+        label: "字号"
+        min: 8
+        max: 48
+        value: app.style.fontSize
+        onEdited: function (v) {
+          app.style.fontSize = Math.round(v)
+        }
       }
     }
 
-    StyleRowGroup {
+    Card {
       Layout.fillWidth: true
-      source: app.style.styleControls
-      section: "颜色"
-    }
-  }
+      title: "布局"
 
-  Card {
-    Layout.fillWidth: true
-    visible: page.section === "字体"
+      ComboRow {
+        Layout.fillWidth: true
+        showDivider: false
+        label: "候选排列"
 
-    StyleRowGroup {
-      Layout.fillWidth: true
-      source: app.style.styleControls
-      section: "字体"
-    }
-
-    SliderRow {
-      Layout.fillWidth: true
-      label: "字号"
-      min: 8
-      max: 48
-      value: app.style.fontSize
-      onEdited: function (v) {
-        app.style.fontSize = Math.round(v)
+        options: app.style.layoutOptions
+        value: app.style.layout
+        onEdited: function (v) {
+          app.style.layout = v
+        }
       }
-    }
-  }
 
-  Card {
-    Layout.fillWidth: true
-    visible: page.section === "布局"
-
-    ComboRow {
-      Layout.fillWidth: true
-      showDivider: false
-      label: "候选排列"
-      fieldWidth: 120
-      options: app.style.layoutOptions
-      value: app.style.layout
-      onEdited: function (v) {
-        app.style.layout = v
+      StyleRowGroup {
+        Layout.fillWidth: true
+        source: app.style.styleControls
+        section: "布局"
+        includeKeys: ["layout/corner_radius"]
       }
     }
 
-    StyleRowGroup {
+    Btn {
+      text: page.advanced ? "收起更多外观选项" : "更多外观选项"
+      quiet: true
+      onClicked: page.advanced = !page.advanced
+    }
+
+    Card {
       Layout.fillWidth: true
-      source: app.style.styleControls
-      section: "布局"
+      title: "颜色"
+      visible: page.advanced
+      StyleRowGroup {
+        Layout.fillWidth: true
+        source: app.style.styleControls
+        section: "颜色"
+      }
+    }
+
+    Card {
+      Layout.fillWidth: true
+      title: "布局细节"
+      visible: page.advanced
+      StyleRowGroup {
+        Layout.fillWidth: true
+        source: app.style.styleControls
+        section: "布局"
+        excludeKeys: ["layout/corner_radius"]
+      }
+    }
+
+    Card {
+      Layout.fillWidth: true
+      title: "显示"
+      visible: page.advanced
+
+      StyleRowGroup {
+        Layout.fillWidth: true
+        source: app.style.styleControls
+        section: "显示"
+      }
+    }
+
+    Card {
+      Layout.fillWidth: true
+      title: "格式"
+      visible: page.advanced
+
+      StyleRowGroup {
+        Layout.fillWidth: true
+        source: app.style.styleControls
+        section: "格式"
+      }
     }
   }
-
-  Card {
+  MacPreviewStrip {
     Layout.fillWidth: true
-    visible: page.section === "显示"
-
-    StyleRowGroup {
-      Layout.fillWidth: true
-      source: app.style.styleControls
-      section: "显示"
-    }
+    Layout.preferredWidth: 550
+    Layout.alignment: Qt.AlignTop
   }
 
-  Card {
-    Layout.fillWidth: true
-    visible: page.section === "格式"
-
-    StyleRowGroup {
-      Layout.fillWidth: true
-      source: app.style.styleControls
-      section: "格式"
-    }
-  }
-  }
 }

@@ -8,29 +8,29 @@ QtObject {
 
   property bool dark: false
 
-  readonly property color ground: dark ? "#101010" : "#FFFFFF"
-  readonly property color surface: dark ? "#1C1C1C" : "#FFFFFF"
-  readonly property color sidebarBg: dark ? "#0C0C0C" : "#F2F5F7"
-  readonly property color field: dark ? "#171717" : "#FFFFFF"
+  readonly property color ground: dark ? "#11151a" : "#eeeae3"
+  readonly property color surface: dark ? "#20262e" : "#ffffff"
+  readonly property color sidebarBg: dark ? "#161b21" : "#f1eee7"
+  readonly property color field: dark ? "#171c23" : "#f6f3ed"
 
-  readonly property color hair: dark ? Qt.rgba(1, 1, 1, 0.10)
-                                      : Qt.rgba(0, 0, 0, 0.10)
-  readonly property color hairSoft: dark ? Qt.rgba(1, 1, 1, 0.05)
-                                          : Qt.rgba(0, 0, 0, 0.05)
-  readonly property color ink: dark ? "#F2F6F8" : "#111827"
-  readonly property color ink2: dark ? "#AFBEC8" : "#364152"
-  readonly property color ink3: dark ? "#8B9EAA" : "#52616B"
+  readonly property color hair: dark ? Qt.rgba(96/255, 108/255, 124/255, 0.35)
+                                    : Qt.rgba(145/255, 135/255, 119/255, 0.35)
+  readonly property color hairSoft: dark ? Qt.rgba(96/255, 108/255, 124/255, 0.18)
+                                        : Qt.rgba(145/255, 135/255, 119/255, 0.18)
+  readonly property color ink: dark ? "#edf1f5" : "#302c26"
+  readonly property color ink2: dark ? "#adb8c7" : "#6b6257"
+  readonly property color ink3: dark ? "#adb8c7" : "#6b6257"
 
-  readonly property color accent: dark ? "#43D5BA" : "#087F70"
-  readonly property color accentSoft: dark ? "#203C3B" : "#D9EEE9"
+  readonly property color accent: dark ? "#94c8bc" : "#785330"
+  readonly property color accentSoft: dark ? "#2b403e" : "#eee2d3"
   readonly property color accentInk: accent
-  readonly property color accentText: dark ? "#10221F" : "#FFFFFF"
+  readonly property color accentText: dark ? "#102722" : "#ffffff"
 
   readonly property color shadow: dark ? Qt.rgba(0, 0, 0, 0.35)
                                        : Qt.rgba(0, 0, 0, 0.10)
   readonly property color scrim: Qt.rgba(0, 0, 0, 0.4)
 
-  readonly property int cardRadius: 9
+  readonly property int cardRadius: 12
   readonly property int fieldRadius: 8
   readonly property int pillRadius: 999
 
@@ -41,7 +41,7 @@ QtObject {
   readonly property real subSize: 12
   readonly property real hintSize: 12
 
-  readonly property int rowHeight: 44
+  readonly property int rowHeight: 64
   readonly property int controlHeight: 34
 
   // 西文 Segoe UI,中文回落微软雅黑(决策:不随包分发字体)

@@ -17,7 +17,7 @@ PageScroll {
       Layout.fillWidth: true
       showDivider: false
       label: "显示通知"
-      fieldWidth: 130
+
       options: app.general.notificationOptions
       value: app.general.notificationsMode
       onEdited: function (v) {
@@ -45,7 +45,7 @@ PageScroll {
     ComboRow {
       Layout.fillWidth: true
       label: "左 Shift"
-      fieldWidth: 130
+
       options: app.general.shiftActions
       value: app.general.shiftL
       onEdited: function (v) {
@@ -56,7 +56,7 @@ PageScroll {
     ComboRow {
       Layout.fillWidth: true
       label: "右 Shift"
-      fieldWidth: 130
+
       options: app.general.shiftActions
       value: app.general.shiftR
       onEdited: function (v) {

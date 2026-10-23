@@ -1,13 +1,6 @@
 #pragma once
 
-// native(系统配色)方案的两套烘焙色。
-// macOS 上 native 由 AppKit 语义色动态解析(windowBackgroundColor/
-// selectedTextBackgroundColor/labelColor/secondaryLabelColor);Windows 没有
-// 对应的动态通道,于 2026-09 在 macOS 26 上实测后固化为常量。不跟随用户
-// 自定义强调色,两侧一致。
-//
-// 常量为 AARRGGBB。BangkeRime 的 UIStyle 颜色槽位是 ABGR(COLORREF),
-// 经 ArgbToAbgr 换入;BangkeSettings 的 GetSchemeColors 直接用 ARGB。
+// Shared Mist (dark) and Paper (light) candidate palettes. Constants are ARGB.
 
 #include <map>
 #include <string>
@@ -28,12 +21,12 @@ struct NativePalette {
 };
 
 inline constexpr NativePalette kNativeLight{
-    0xFFFFFFFF, 0xD9000000, 0xD9000000, 0xD9000000, 0xD9000000, 0xFFB3D7FF,
-    0x80000000, 0x80000000, 0x80000000, 0x80000000};
+    0xFFF6F3ED, 0xFF302C26, 0xFF302C26, 0xFF302C26, 0xFFFFFFFF, 0xFF785330,
+    0xFF6B6257, 0xFF6B6257, 0xFFFFFFFF, 0xFFFFFFFF};
 
 inline constexpr NativePalette kNativeDark{
-    0xFF1E1E1E, 0xD9FFFFFF, 0xD9FFFFFF, 0xD9FFFFFF, 0xD9FFFFFF, 0xFF3F638B,
-    0x8CFFFFFF, 0x8CFFFFFF, 0x8CFFFFFF, 0x8CFFFFFF};
+    0xFF171C23, 0xFFEDF1F5, 0xFFEDF1F5, 0xFFEDF1F5, 0xFF102722, 0xFF94C8BC,
+    0xFFADB8C7, 0xFFADB8C7, 0xFF102722, 0xFF102722};
 
 inline constexpr unsigned int ArgbToAbgr(unsigned int argb) {
   return (argb & 0xFF00FF00u) | ((argb & 0x00FF0000u) >> 16) |

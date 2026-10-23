@@ -13,7 +13,7 @@ RowShell {
   id: row
   property var value
   property var options: []
-  property real fieldWidth: 170
+  readonly property real fieldWidth: 220
   signal edited(var value)
 
   controlWidth: row.fieldWidth
@@ -66,10 +66,11 @@ RowShell {
     }
 
     Txt {
-      x: 9
-      width: parent.width - 9 - 20
+      x: 28
+      width: parent.width - 56
       height: parent.height
       text: row.currentText
+      horizontalAlignment: Text.AlignHCenter
       verticalAlignment: Text.AlignVCenter
       elide: Text.ElideRight
     }
@@ -165,7 +166,8 @@ RowShell {
                 height: parent.height
                 text: modelData.text
                 color: item.active ? Theme.accentText : Theme.ink
-                verticalAlignment: Text.AlignVCenter
+                horizontalAlignment: Text.AlignHCenter
+      verticalAlignment: Text.AlignVCenter
                 elide: Text.ElideRight
               }
 

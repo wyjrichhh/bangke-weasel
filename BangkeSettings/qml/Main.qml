@@ -7,10 +7,10 @@ import Bangke.Pages
 Window {
   id: window
 
-  width: 960
-  height: 660
-  minimumWidth: 780
-  minimumHeight: 580
+  width: 1240
+  height: 840
+  minimumWidth: 1100
+  minimumHeight: 720
   visible: true
   title: "蚌壳拼音设置"
   color: Theme.ground
@@ -23,15 +23,52 @@ Window {
     value: sysTheme.dark
   }
 
-  RowLayout {
+  ColumnLayout {
     anchors.fill: parent
     spacing: 0
 
-    Sidebar {
-      enabled: !app.saving
-      Layout.preferredWidth: 194
-      Layout.fillHeight: true
+    Item {
+      Layout.fillWidth: true
+      Layout.preferredHeight: 72
+      Txt {
+        anchors.left: parent.left
+        anchors.leftMargin: 28
+        anchors.verticalCenter: parent.verticalCenter
+        text: "蚌壳拼音"
+        font.pixelSize: 18
+        font.weight: Font.DemiBold
+      }
+      Row {
+        anchors.centerIn: parent
+        spacing: 8
+        Repeater {
+          model: app.pageTitles
+          delegate: Btn {
+            required property int index
+            required property string modelData
+            text: modelData
+            quiet: true
+            implicitHeight: 42
+            background: Rectangle {
+              radius: 8
+              color: index === app.pageIndex ? Theme.accentSoft : "transparent"
+              border.width: parent.activeFocus ? 1 : 0
+              border.color: Theme.accent
+            }
+            contentItem: Txt {
+              text: modelData
+              horizontalAlignment: Text.AlignHCenter
+              verticalAlignment: Text.AlignVCenter
+              color: index === app.pageIndex ? Theme.accent : Theme.ink2
+              font.weight: Font.DemiBold
+            }
+            enabled: !app.saving
+            onClicked: app.pageIndex = index
+          }
+        }
+      }
     }
+    Hairline { Layout.fillWidth: true }
 
     ColumnLayout {
       Layout.fillWidth: true
@@ -73,14 +110,14 @@ Window {
         Layout.bottomMargin: 14
         spacing: 10
 
+        Item { Layout.fillWidth: true }
+
         Btn {
           text: "恢复默认"
           quiet: true
           enabled: !app.saving
           onClicked: app.restoreDefaults()
         }
-
-        Item { Layout.fillWidth: true }
 
         Txt {
           text: "正在部署…"
