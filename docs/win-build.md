@@ -92,10 +92,23 @@ CTranslate2 4.8.3，其中包含 Ruy 和非 OpenMP 线程池的退出死锁修�
 ```bat
 cmake -S C:\dev\ct2-4.8.3-src -B C:\dev\ct2-4.8.3-src\build -G "Visual Studio 17 2022" -A x64 ^
   -DCMAKE_INSTALL_PREFIX=C:/dev/ct2-4.8.3-install ^
-  -DBUILD_CLI=OFF -DBUILD_SHARED_LIBS=OFF ^
+  -DBUILD_CLI=OFF -DBUILD_SHARED_LIBS=OFF -DCMAKE_CXX_FLAGS=/utf-8 -DCMAKE_C_FLAGS=/utf-8 ^
   -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ^
   -DOPENMP_RUNTIME=NONE -DWITH_CUDA=OFF -DWITH_MKL=OFF -DWITH_DNNL=OFF -DWITH_RUY=ON
 cmake --build C:\dev\ct2-4.8.3-src\build --config Release --target install
+```
+
+静态链接还需要 Ruy 的合并归档和 cpu_features。在 VS 的 x64 开发者 PowerShell 中执行：
+
+```powershell
+$build = 'C:\dev\ct2-4.8.3-src\build'
+$prefix = 'C:\dev\ct2-4.8.3-install'
+$archives = Get-ChildItem "$build\third_party\ruy" -Recurse -File -Filter '*.lib' |
+  Where-Object { $_.Name -like 'ruy*.lib' -or $_.Name -in @('cpuinfo.lib', 'clog.lib') } |
+  Select-Object -ExpandProperty FullName
+& lib.exe /NOLOGO "/OUT:$prefix\lib\ruy.lib" @archives
+Get-ChildItem "$build\third_party\cpu_features" -Recurse -File -Filter 'cpu_features.lib' |
+  Select-Object -First 1 | Copy-Item -Destination "$prefix\lib\cpu_features.lib"
 ```
 
 CT2 与 AI 插件静态链接进同一个 rime.dll，因此使用 `/MT`；
