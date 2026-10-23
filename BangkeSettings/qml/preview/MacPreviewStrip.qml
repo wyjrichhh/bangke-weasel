@@ -25,7 +25,7 @@ ColumnLayout {
         Item { Layout.fillWidth: true }
         Txt { text: "跟随系统深浅主题"; color: Theme.ink2 }
       }
-      Txt { text: "今天，bangke"; font.pixelSize: 18 }
+      Txt { text: app.style.previewMetrics.inlinePreedit === false ? "今天，" : "今天，bangke"; font.pixelSize: 18 }
       Flickable {
         id: viewport
         Layout.fillWidth: true

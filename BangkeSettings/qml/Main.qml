@@ -7,10 +7,10 @@ import Bangke.Pages
 Window {
   id: window
 
-  width: 1240
-  height: 840
-  minimumWidth: 1100
-  minimumHeight: 720
+  width: Math.min(1240, Screen.desktopAvailableWidth - 48)
+  height: Math.min(840, Screen.desktopAvailableHeight - 48)
+  minimumWidth: Math.min(1100, Screen.desktopAvailableWidth - 48)
+  minimumHeight: Math.min(720, Screen.desktopAvailableHeight - 48)
   visible: true
   title: "蚌壳拼音设置"
   color: Theme.ground
