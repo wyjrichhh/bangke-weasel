@@ -915,6 +915,7 @@ class MainWindow : public QWidget {
     box->addWidget(m_msiMissing);
 
     freshGroup_ = new QFrame(welcomePage_);
+    freshGroup_->setObjectName("freshInstall");
     auto* fresh = new QVBoxLayout(freshGroup_);
     fresh->setContentsMargins(0, 0, 0, 0);
     fresh->setSpacing(10);
@@ -930,6 +931,7 @@ class MainWindow : public QWidget {
     box->addWidget(freshGroup_);
 
     installedGroup_ = new QFrame(welcomePage_);
+    installedGroup_->setObjectName("installedActions");
     auto* inst = new QVBoxLayout(installedGroup_);
     inst->setContentsMargins(0, 0, 0, 0);
     inst->setSpacing(10);

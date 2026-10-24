@@ -25,3 +25,22 @@ if(WIN32)
   target_link_libraries(status_icon_test PRIVATE user32 gdi32 advapi32)
   add_test(NAME status_icon COMMAND status_icon_test)
 endif()
+
+if(WIN32)
+  find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
+  qt_generate_moc(../BangkeInstaller/main.cpp "${CMAKE_CURRENT_BINARY_DIR}/main.moc")
+  add_executable(installer_ui_test installer_ui_test.cpp "${CMAKE_CURRENT_BINARY_DIR}/main.moc")
+  set_target_properties(installer_ui_test PROPERTIES AUTOMOC OFF)
+  target_include_directories(installer_ui_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+  target_compile_options(installer_ui_test PRIVATE /utf-8)
+  target_link_libraries(installer_ui_test PRIVATE Qt6::Widgets msi advapi32)
+  set_source_files_properties("../../resource/bangke-appicon.png" PROPERTIES QT_RESOURCE_ALIAS "bangke-appicon.png")
+  set_source_files_properties("../../LICENSE.txt" PROPERTIES QT_RESOURCE_ALIAS "LICENSE.txt")
+  qt_add_resources(installer_ui_test "test_installer_assets"
+    PREFIX "/installer"
+    BASE "${CMAKE_CURRENT_SOURCE_DIR}/../.."
+    FILES "../../resource/bangke-appicon.png" "../../LICENSE.txt"
+  )
+  add_test(NAME installer_ui COMMAND installer_ui_test)
+  set_tests_properties(installer_ui PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
