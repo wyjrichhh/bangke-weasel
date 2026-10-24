@@ -32,7 +32,14 @@ qt_add_executable(BangkeInstaller WIN32
   BangkeInstaller.rc
 )
 
-target_link_libraries(BangkeInstaller PRIVATE Qt6::Widgets msi.lib)
+set_source_files_properties("../../resource/bangke-appicon.png" PROPERTIES QT_RESOURCE_ALIAS "bangke-appicon.png")
+set_source_files_properties("../../LICENSE.txt" PROPERTIES QT_RESOURCE_ALIAS "LICENSE.txt")
+qt_add_resources(BangkeInstaller "installer_assets"
+  PREFIX "/installer"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/../.."
+  FILES "../../resource/bangke-appicon.png" "../../LICENSE.txt"
+)
+target_link_libraries(BangkeInstaller PRIVATE Qt6::Widgets msi.lib advapi32.lib)
 target_compile_definitions(BangkeInstaller PRIVATE
   VERSION_MAJOR=${VERSION_MAJOR}
   VERSION_MINOR=${VERSION_MINOR}

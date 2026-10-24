@@ -2,6 +2,10 @@
 // 子进程隔离保证 UI 崩溃不影响安装事务（2026-09-06 一次 UI 层 UAF 崩溃验证了这一点）。
 // 阶段进度来自对 verbose log 的增量读取，不做假百分比。
 #include <QApplication>
+#include <QPalette>
+#include <QTextBrowser>
+#include <QDialog>
+#include <QScreen>
 #include <QCheckBox>
 #include <QDir>
 #include <QFile>
@@ -44,6 +48,73 @@ static const wchar_t* kUpgradeCode = L"{8F1D4B33-9C2A-4E6D-B0F7-3A5C8E21D940}";
 
 static QString MsiPackageProperty(const QString& path, const QString& property = QStringLiteral("ProductVersion"));
 static std::optional<bangke::installer::Version> ParseVersion(const QString& v);
+
+static bool InstallerUsesDarkTheme() {
+  DWORD light = 1, size = sizeof(light);
+  RegGetValueW(HKEY_CURRENT_USER,
+      L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+      L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &light, &size);
+  return light == 0;
+}
+
+static void ApplyInstallerTheme(bool dark) {
+  const QString ground = dark ? "#11151A" : "#F7F5F0";
+  const QString surface = dark ? "#20262E" : "#FFFFFF";
+  const QString field = dark ? "#171C23" : "#F0EDE6";
+  const QString ink = dark ? "#EDF1F5" : "#302C26";
+  const QString muted = dark ? "#ADB8C7" : "#6B6257";
+  const QString accent = dark ? "#94C8BC" : "#785330";
+  const QString soft = dark ? "#2B403E" : "#EEE2D3";
+  const QString line = dark ? "#343D48" : "#DCD5CB";
+  const QString on = dark ? "#102722" : "#FFFFFF";
+  QPalette palette;
+  palette.setColor(QPalette::Window, QColor(ground));
+  palette.setColor(QPalette::WindowText, QColor(ink));
+  palette.setColor(QPalette::Text, QColor(ink));
+  palette.setColor(QPalette::Base, QColor(field));
+  palette.setColor(QPalette::Button, QColor(surface));
+  palette.setColor(QPalette::ButtonText, QColor(ink));
+  palette.setColor(QPalette::Highlight, QColor(accent));
+  palette.setColor(QPalette::HighlightedText, QColor(on));
+  palette.setColor(QPalette::Mid, QColor(line));
+  palette.setColor(QPalette::PlaceholderText, QColor(muted));
+  qApp->setPalette(palette);
+  QString css = QStringLiteral(R"(
+    QWidget { background: transparent; color: @ink; font-family: "Microsoft YaHei UI"; font-size: 13px; }
+    #panel { background: @ground; border: 1px solid @line; border-radius: 14px; }
+    #title, #sub { color: @muted; font-size: 12px; }
+    #brandRail { border-right: 1px solid @line; background: qradialgradient(cx:1, cy:0, radius:1.2, stop:0 @soft, stop:1 @field); }
+    #brandName { font-size: 20px; font-weight: 600; }
+    #brandHeadline { font-size: 28px; font-weight: 600; }
+    #brandPreview { background: @ground; border: 1px solid @line; border-radius: 10px; }
+    #selectedCandidate { background: @accent; color: @on; border-radius: 6px; padding: 6px; }
+    #heroTitle, #finishTitle { font-size: 25px; font-weight: 600; }
+    #facts { background: @surface; border: 1px solid @line; border-radius: 10px; }
+    #warn { color: @accent; }
+    QPushButton { background: @field; border: 1px solid @line; border-radius: 8px; padding: 0 18px; min-height: 40px; }
+    QPushButton:hover, QPushButton:focus { border-color: @accent; background: @soft; }
+    QPushButton:pressed { background: @surface; }
+    QPushButton:disabled { color: @muted; }
+    #accent { background: @accent; color: @on; border: 1px solid @accent; font-size: 14px; font-weight: 600; }
+    #accent:hover { background: @accent; border: 2px solid @on; }
+    #accent:disabled { background: @soft; color: @muted; border-color: @line; }
+    #danger { color: @muted; }
+    #danger:hover { color: @ink; }
+    #textLink { background: transparent; border: none; padding: 0 4px; min-height: 24px; color: @muted; font-size: 12px; }
+    #textLink:hover { color: @accent; }
+    QCheckBox { color: @muted; spacing: 8px; }
+    QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px; border: 1px solid @muted; background: @field; }
+    QCheckBox::indicator:checked { background: @accent; border-color: @accent; }
+    QMessageBox, QDialog { background: @ground; }
+    QTextBrowser { background: @field; border: 1px solid @line; border-radius: 8px; padding: 12px; }
+  )");
+  for (const auto& entry : {qMakePair(QString("@ground"), ground), qMakePair(QString("@surface"), surface),
+      qMakePair(QString("@field"), field), qMakePair(QString("@ink"), ink),
+      qMakePair(QString("@muted"), muted), qMakePair(QString("@accent"), accent),
+      qMakePair(QString("@soft"), soft), qMakePair(QString("@line"), line), qMakePair(QString("@on"), on)})
+    css.replace(entry.first, entry.second);
+  qApp->setStyleSheet(css);
+}
 
 static QString FindMsi() {
   // 引导壳会把本次解包的 MSI 文件名作为第一个参数传入 —— 参数是
@@ -203,12 +274,12 @@ class BusyBar : public QWidget {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
     p.setPen(Qt::NoPen);
-    p.setBrush(QColor("#253438"));
+    p.setBrush(palette().color(QPalette::Mid));
     p.drawRoundedRect(rect(), height() / 2.0, height() / 2.0);
     if (m_value <= 0.0)
       return;
     const QRectF done(0, 0, width() * m_value, height());
-    p.setBrush(QColor("#7DE2CB"));
+    p.setBrush(palette().color(QPalette::Highlight));
     p.drawRoundedRect(done, height() / 2.0, height() / 2.0);
     // 扫光只叠在已完成的那段上:部署阶段之间进度会停(FirstDeploy 可能几分钟),
     // 完全静止看着像卡死,给它一点持续的动作
@@ -265,7 +336,7 @@ class CheckMark : public QWidget {
   void paintEvent(QPaintEvent*) override {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
-    const QColor c = m_ok ? QColor("#7DE2CB") : QColor(0xE0, 0x56, 0x56);
+    const QColor c = m_ok ? palette().color(QPalette::Highlight) : QColor(0xE0, 0x56, 0x56);
     const QRectF r = rect().adjusted(6, 6, -6, -6);
     QPen pen(c, 3.2);
     pen.setCapStyle(Qt::RoundCap);
@@ -324,13 +395,13 @@ class ShellMark : public QWidget {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
     const QPointF center(width() / 2.0, 106);
-    p.setPen(QPen(QColor("#253438"), 1));
+    p.setPen(QPen(palette().color(QPalette::Mid), 1));
     for (int x = 12; x < width(); x += 24)
       for (int y = 12; y < height(); y += 24) p.drawPoint(x, y);
     p.setBrush(Qt::NoBrush);
-    p.setPen(QPen(QColor("#35494D"), 1));
+    p.setPen(QPen(palette().color(QPalette::Mid), 1));
     p.drawEllipse(QPointF(width() / 2.0, 75), 118, 64);
-    p.setPen(QPen(QColor("#7DE2CB"), 1.3));
+    p.setPen(QPen(palette().color(QPalette::Highlight), 1.3));
     for (int i = 0; i <= 12; ++i) {
       const qreal angle = 3.141592653589793 * i / 12;
       const QPointF edge(center.x() + 82 * std::cos(angle),
@@ -343,7 +414,7 @@ class ShellMark : public QWidget {
     }
     p.drawArc(QRectF(center.x() - 82, center.y() - 72, 164, 144), 0, 180 * 16);
     p.setPen(Qt::NoPen);
-    p.setBrush(QColor("#7DE2CB"));
+    p.setBrush(palette().color(QPalette::Highlight));
     const qreal radius = 3 + m_progress * 3;
     p.drawEllipse(QPointF(center.x(), center.y() - 28), radius, radius);
   }
@@ -369,7 +440,7 @@ class CloseButton : public QWidget {
     const bool hot = underMouse() || isDown();
     p.setBrush(hot ? QColor(0xE0, 0x56, 0x56) : Qt::transparent);
     p.drawRoundedRect(rect(), 8, 8);
-    QPen pen(hot ? QColor(0xFF, 0xFF, 0xFF) : QColor("#97ABA9"), 1.7);
+    QPen pen(hot ? QColor(0xFF, 0xFF, 0xFF) : palette().color(QPalette::PlaceholderText), 1.7);
     pen.setCapStyle(Qt::RoundCap);
     p.setPen(pen);
     // 叉:占按钮约 40%,四边留白均匀
@@ -403,8 +474,8 @@ class MainWindow : public QWidget {
     setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint);
     setAttribute(Qt::WA_TranslucentBackground);
     setWindowOpacity(0.0);  // 入场动画从全透明起步
-    resize(680, 620);
-    setMinimumSize(680, 620);
+    resize(996, 634);
+    setMinimumSize(936, 614);
     setWindowTitle(QStringLiteral(u"蚌壳拼音 · 安装"));
 
     auto* root = new QVBoxLayout(this);
@@ -425,7 +496,7 @@ class MainWindow : public QWidget {
     box->setSpacing(0);
 
     auto* title = new QHBoxLayout();
-    auto* titleText = new QLabel(QStringLiteral("BANGKE  /  SETUP"), panel);
+    auto* titleText = new QLabel(QStringLiteral(u"蚌壳拼音 · 安装"), panel);
     titleText->setObjectName("title");
     m_closeBtn = new CloseButton(panel);
     title->setContentsMargins(28, 18, 18, 12);
@@ -434,13 +505,74 @@ class MainWindow : public QWidget {
     title->addWidget(m_closeBtn);
     box->addLayout(title);
 
+    auto* content = new QHBoxLayout();
+    content->setContentsMargins(0, 0, 0, 0);
+    content->setSpacing(0);
+    auto* rail = new QFrame(panel);
+    rail->setObjectName("brandRail");
+    rail->setFixedWidth(318);
+    auto* brand = new QVBoxLayout(rail);
+    brand->setContentsMargins(30, 32, 30, 30);
+    brand->setSpacing(12);
+    auto* name = new QLabel(QStringLiteral(u"蚌壳拼音"), rail);
+    name->setObjectName("brandName");
+    name->setAlignment(Qt::AlignCenter);
+    auto* logo = new QLabel(rail);
+    logo->setPixmap(QPixmap(QStringLiteral(":/installer/bangke-appicon.png")).scaled(
+        40, 40, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    brand->addWidget(logo, 0, Qt::AlignHCenter);
+    brand->addWidget(name);
+    brand->addSpacing(28);
+    auto* headline = new QLabel(QStringLiteral(u"让想法，\n自然成文。"), rail);
+    headline->setObjectName("brandHeadline");
+    headline->setAlignment(Qt::AlignCenter);
+    brand->addWidget(headline);
+    auto* copy = new QLabel(QStringLiteral(u"熟悉的拼音输入\n在本机运行的 AI 联想"), rail);
+    copy->setObjectName("sub");
+    copy->setAlignment(Qt::AlignCenter);
+    brand->addWidget(copy);
+    brand->addSpacing(20);
+    auto* sample = new QFrame(rail);
+    sample->setObjectName("brandPreview");
+    auto* preview = new QVBoxLayout(sample);
+    preview->setContentsMargins(10, 12, 10, 12);
+    auto* typed = new QLabel(QStringLiteral(u"今天，bangke"), sample);
+    typed->setAlignment(Qt::AlignCenter);
+    preview->addWidget(typed);
+    auto* candidates = new QHBoxLayout();
+    auto* selected = new QLabel(QStringLiteral(u"1. 蚌壳"), sample);
+    selected->setObjectName("selectedCandidate");
+    selected->setAlignment(Qt::AlignCenter);
+    auto* other = new QLabel(QStringLiteral(u"2. 帮客"), sample);
+    other->setAlignment(Qt::AlignCenter);
+    candidates->addWidget(selected);
+    candidates->addWidget(other);
+    preview->addLayout(candidates);
+    brand->addWidget(sample);
+    brand->addStretch();
+    auto* foot = new QLabel(QStringLiteral(u"本地 AI 联想 · Windows 64 位"), rail);
+    foot->setObjectName("sub");
+    foot->setAlignment(Qt::AlignCenter);
+    brand->addWidget(foot);
+    content->addWidget(rail);
     m_stack = new QStackedWidget(panel);
-    box->addWidget(m_stack, 1);
+    content->addWidget(m_stack, 1);
+    box->addLayout(content, 1);
     buildWelcomePage();
     buildProgressPage();
     buildFinishPage();
 
     refreshState();
+    auto* themeTimer = new QTimer(this);
+    bool dark = InstallerUsesDarkTheme();
+    connect(themeTimer, &QTimer::timeout, this, [dark]() mutable {
+      const bool next = InstallerUsesDarkTheme();
+      if (next != dark) {
+        dark = next;
+        ApplyInstallerTheme(dark);
+      }
+    });
+    themeTimer->start(1000);
   }
 
  protected:
@@ -685,8 +817,8 @@ class MainWindow : public QWidget {
       m_finishTitle->setText(title);
       m_finishDetail->setText(detail);
     } else {
-      m_finishTitle->setText(QStringLiteral(u"操作失败 (代码 0x%1)").arg((uint)r, 8, 16, QChar('0')));
-      m_finishDetail->setText(QStringLiteral(u"详细日志：") +
+      m_finishTitle->setText(QStringLiteral(u"未能完成操作（0x%1）").arg((uint)r, 8, 16, QChar('0')));
+      m_finishDetail->setText(QStringLiteral(u"请查看日志了解原因，再重新运行安装程序。\n") +
                               QDir::toNativeSeparators(MsiLogPath(m_msiPath)));
     }
     m_check->start(ok);
@@ -695,8 +827,8 @@ class MainWindow : public QWidget {
     // 摆出来并说明原因
     if (ok)
       m_logoffBtn->setText(rebootPending
-                               ? QStringLiteral(u"重启 Windows（完成更新）")
-                               : QStringLiteral(u"立即注销（清除输入法残留）"));
+                               ? QStringLiteral(u"现在重启…")
+                               : QStringLiteral(u"注销以完成卸载…"));
     m_logoffBtn->setVisible(ok && (m_job.op == MsiJob::Uninstall || rebootPending));
     m_openLogBtn->setVisible(!ok && !m_msiPath.isEmpty());
   }
@@ -713,7 +845,7 @@ class MainWindow : public QWidget {
     installedGroup_->setVisible(haveMsi && installed);
 
     if (haveMsi)
-      m_pkgLabel->setText(QStringLiteral(u"安装包版本 %1").arg(
+      m_pkgLabel->setText(QStringLiteral(u"安装版本  %1  ·  Windows 64 位").arg(
           m_pkgVersion.isEmpty() ? QStringLiteral(u"未知") : m_pkgVersion));
 
     if (installed) {
@@ -725,12 +857,13 @@ class MainWindow : public QWidget {
       m_repairBtn->setEnabled(canInstall);
       m_primaryRepair = comparison == ParseVersion(cur) &&
           MsiPackageProperty(m_msiPath, QStringLiteral("ProductCode")).compare(m_productCode, Qt::CaseInsensitive) == 0;
+      m_repairBtn->setVisible(!m_primaryRepair);
       if (comparison > ParseVersion(cur))
-        m_primaryBtn->setText(QStringLiteral(u"升级到 %1").arg(m_pkgVersion));
+        m_primaryBtn->setText(QStringLiteral(u"更新至 %1").arg(m_pkgVersion));
       else if (m_primaryRepair)
-        m_primaryBtn->setText(QStringLiteral(u"修复当前版本"));
+        m_primaryBtn->setText(QStringLiteral(u"修复安装"));
       else if (comparison == ParseVersion(cur))
-        m_primaryBtn->setText(QStringLiteral(u"重新安装当前版本"));
+        m_primaryBtn->setText(QStringLiteral(u"重新安装"));
       else
         m_primaryBtn->setText(QStringLiteral(u"已安装更新版本"));
     }
@@ -748,32 +881,34 @@ class MainWindow : public QWidget {
     welcomePage_ = new QFrame();
     welcomePage_->setObjectName("page");
     auto* box = new QVBoxLayout(welcomePage_);
-    box->setContentsMargins(36, 8, 36, 28);
+    box->setContentsMargins(36, 8, 36, 24);
     box->setSpacing(12);
 
-    // 简洁的品牌几何图形与产品信息。
-    auto* hero = new ShellMark(welcomePage_);
-    hero->setProgress(1.0);
-    box->addSpacing(6);
-    box->addWidget(hero, 0, Qt::AlignHCenter);
-    auto* heading = new QLabel(QStringLiteral(u"让输入，回归心流。"), welcomePage_);
+    box->addSpacing(20);
+    auto* heading = new QLabel(QStringLiteral(u"安装蚌壳拼音"), welcomePage_);
     heading->setObjectName("heroTitle");
-    box->addWidget(heading, 0, Qt::AlignHCenter);
-    auto* sub = new QLabel(QStringLiteral(u"蚌壳拼音  /  本地 AI 联想 · Windows 原生输入"), welcomePage_);
+    heading->setAlignment(Qt::AlignCenter);
+    box->addWidget(heading);
+    auto* sub = new QLabel(QStringLiteral(u"拼音输入与本地 AI 联想，一次装好。"), welcomePage_);
     sub->setObjectName("sub");
     sub->setAlignment(Qt::AlignCenter);
-    box->addWidget(sub, 0, Qt::AlignHCenter);
+    sub->setWordWrap(true);
+    box->addWidget(sub);
+    box->addSpacing(18);
     m_pkgLabel = new QLabel(welcomePage_);
-    m_pkgLabel->setObjectName("sub");
+    m_pkgLabel->setObjectName("facts");
+    m_pkgLabel->setMinimumHeight(56);
     m_pkgLabel->setAlignment(Qt::AlignCenter);
-    box->addWidget(m_pkgLabel, 0, Qt::AlignHCenter);
-    box->addSpacing(8);
-    auto* privacy = new QLabel(QStringLiteral(u"离线推理  ·  保留个人词库  ·  安装后即用"), welcomePage_);
+    box->addWidget(m_pkgLabel);
+    auto* privacy = new QLabel(QStringLiteral(u"内置输入方案与本地模型，无需另行下载。"), welcomePage_);
     privacy->setObjectName("sub");
-    box->addWidget(privacy, 0, Qt::AlignHCenter);
+    privacy->setAlignment(Qt::AlignCenter);
+    privacy->setWordWrap(true);
+    box->addWidget(privacy);
+    box->addStretch();
 
     m_msiMissing = new QLabel(
-        QStringLiteral(u"未找到 BangkeSetup-*.msi。\n请将本程序与安装包放在同一目录后重新运行。"), welcomePage_);
+        QStringLiteral(u"安装文件不完整。\n请重新下载完整安装包后再试。"), welcomePage_);
     m_msiMissing->setObjectName("warn");
     m_msiMissing->setAlignment(Qt::AlignCenter);
     m_msiMissing->setWordWrap(true);
@@ -783,11 +918,13 @@ class MainWindow : public QWidget {
     auto* fresh = new QVBoxLayout(freshGroup_);
     fresh->setContentsMargins(0, 0, 0, 0);
     fresh->setSpacing(10);
-    auto* pathNote = new QLabel(QStringLiteral(u"将安装到 %1").arg(QDir::toNativeSeparators(InstalledRoot())), freshGroup_);
+    auto* pathNote = new QLabel(QStringLiteral(u"安装位置\n%1").arg(QDir::toNativeSeparators(InstalledRoot())), freshGroup_);
     pathNote->setObjectName("sub");
     pathNote->setAlignment(Qt::AlignCenter);
+    pathNote->setWordWrap(true);
+    pathNote->setTextInteractionFlags(Qt::TextSelectableByMouse);
     fresh->addWidget(pathNote);
-    auto* installBtn = accentButton(QStringLiteral(u"立即安装"));
+    auto* installBtn = accentButton(QStringLiteral(u"开始安装"));
     connect(installBtn, &QPushButton::clicked, this, [this] { startJob(MsiJob::Install); });
     fresh->addWidget(installBtn);
     box->addWidget(freshGroup_);
@@ -827,7 +964,26 @@ class MainWindow : public QWidget {
     btnRow->addWidget(uninstallBtn, 1);
     inst->addLayout(btnRow);
     box->addWidget(installedGroup_);
-    box->addStretch();
+    auto* license = new QPushButton(QStringLiteral(u"开源许可"), welcomePage_);
+    license->setObjectName("textLink");
+    connect(license, &QPushButton::clicked, this, [this] {
+      QDialog dialog(this);
+      dialog.setWindowTitle(QStringLiteral(u"开源许可"));
+      dialog.resize(620, 440);
+      auto* layout = new QVBoxLayout(&dialog);
+      auto* text = new QTextBrowser(&dialog);
+      QFile file(QStringLiteral(":/installer/LICENSE.txt"));
+      if (file.open(QIODevice::ReadOnly))
+        text->setPlainText(QString::fromUtf8(file.readAll()));
+      else
+        text->setPlainText(QStringLiteral(u"无法读取许可文件，请访问项目网站查看。"));
+      layout->addWidget(text);
+      auto* done = new QPushButton(QStringLiteral(u"关闭"), &dialog);
+      connect(done, &QPushButton::clicked, &dialog, &QDialog::accept);
+      layout->addWidget(done, 0, Qt::AlignHCenter);
+      dialog.exec();
+    });
+    box->addWidget(license, 0, Qt::AlignHCenter);
 
     m_stack->addWidget(welcomePage_);
   }
@@ -841,6 +997,8 @@ class MainWindow : public QWidget {
     m_scene = new ShellMark(progressPage_);
     m_progressTitle = new QLabel(progressPage_);
     m_progressTitle->setAlignment(Qt::AlignCenter);
+    m_progressTitle->setObjectName("finishTitle");
+    m_progressTitle->setWordWrap(true);
     m_actionLabel = new QLabel(QStringLiteral(u"正在准备…"), progressPage_);
     m_actionLabel->setAlignment(Qt::AlignCenter);
     m_bar = new BusyBar(progressPage_);
@@ -869,6 +1027,7 @@ class MainWindow : public QWidget {
     m_finishTitle = new QLabel(finishPage_);
     m_finishTitle->setObjectName("finishTitle");
     m_finishTitle->setAlignment(Qt::AlignCenter);
+    m_finishTitle->setWordWrap(true);
     m_finishDetail = new QLabel(finishPage_);
     m_finishDetail->setObjectName("sub");
     m_finishDetail->setAlignment(Qt::AlignCenter);
@@ -876,7 +1035,7 @@ class MainWindow : public QWidget {
     m_settingsCheck = new QCheckBox(QStringLiteral(u"打开蚌壳设置"), finishPage_);
     m_settingsCheck->setChecked(false);
 
-    m_logoffBtn = new QPushButton(QStringLiteral(u"立即注销（清除输入法残留）"));
+    m_logoffBtn = new QPushButton(QStringLiteral(u"注销以完成卸载…"));
     m_logoffBtn->setMinimumHeight(36);
     m_logoffBtn->setVisible(false);
     connect(m_logoffBtn, &QPushButton::clicked, this, [this] {
@@ -980,34 +1139,7 @@ int main(int argc, char* argv[]) {
   QApplication::setApplicationName(QStringLiteral(u"蚌壳拼音安装器"));
 
   app.setStyle("Fusion");
-  app.setStyleSheet(QStringLiteral(uR"(
-    QWidget { background: transparent; color: #E6EFED; font-family: "Microsoft YaHei UI"; font-size: 13px; }
-    #panel { background: #111A1D; border-radius: 14px; border: 1px solid #304044; }
-    #title { font-family: "Cascadia Code", "Consolas"; font-size: 12px; font-weight: 600; color: #8FA5A4; }
-    #heroTitle { font-size: 30px; font-weight: 600; color: #EDF5F2; }
-    #sub { color: #92A6A5; font-size: 12px; }
-    #warn { color: #EDBF7A; }
-    #finishTitle { font-size: 26px; font-weight: 600; }
-    QPushButton { background: #192528; border: 1px solid #35484C; border-radius: 7px;
-                  color: #C2D1CD; padding: 0 18px; min-height: 40px; }
-    QPushButton:hover { background: #223336; border-color: #7DE2CB; color: #E6FFF7; }
-    QPushButton:pressed { background: #2D4345; }
-    QPushButton:focus { border: 2px solid #7DE2CB; }
-    QPushButton:disabled { color: #627775; border-color: #283638; }
-    #accent { background: #7DE2CB; border: none; color: #102A27; font-size: 14px; font-weight: 600; }
-    #accent:hover { background: #A1EFDD; }
-    #accent:pressed { background: #5AC5AF; }
-    #accent:disabled { background: #243C39; color: #839A95; }
-    #danger { color: #EB9F9A; }
-    #danger:hover { border-color: #EB9F9A; }
-    QCheckBox { color: #92A6A5; spacing: 8px; }
-    QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px;
-                          border: 1px solid #49615F; background: #192528; }
-    QCheckBox::indicator:checked { border-color: #7DE2CB; background: #7DE2CB; }
-    QCheckBox::indicator:hover { border-color: #A1EFDD; }
-    QMessageBox { background: #111A1D; }
-
-  )"));
+  ApplyInstallerTheme(InstallerUsesDarkTheme());
 
   MainWindow w;
   w.show();

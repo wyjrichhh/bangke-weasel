@@ -4,6 +4,7 @@
 #include <shellapi.h>
 #include "BangkeTSF.h"
 #include "LanguageBar.h"
+#include "StatusIcon.h"
 #include "CandidateList.h"
 #include <BangkeUtility.h>
 
@@ -127,9 +128,22 @@ CLangBarItemButton::CLangBarItemButton(com_ptr<BangkeTSF> pTextService,
   _pTextService = pTextService;
   _guid = guid;
   ascii_mode = false;
+  _themeClassName = L"BangkeLanguageBarTheme-" + std::to_wstring(reinterpret_cast<UINT_PTR>(this));
+  WNDCLASSW cls{};
+  cls.lpfnWndProc = ThemeWindowProc;
+  cls.hInstance = g_hInst;
+  cls.lpszClassName = _themeClassName.c_str();
+  _themeClass = RegisterClassW(&cls);
+  if (_themeClass) {
+    // A hidden top-level window receives broadcasts; message-only windows do not.
+    _themeWindow = CreateWindowExW(0, MAKEINTATOM(_themeClass), L"", WS_POPUP,
+        0, 0, 0, 0, nullptr, nullptr, g_hInst, this);
+  }
 }
 
 CLangBarItemButton::~CLangBarItemButton() {
+  if (_themeWindow) DestroyWindow(_themeWindow);
+  if (_themeClass) UnregisterClassW(MAKEINTATOM(_themeClass), g_hInst);
   DllRelease();
 }
 
@@ -259,29 +273,37 @@ STDMETHODIMP CLangBarItemButton::OnMenuSelect(UINT wID) {
   return S_OK;
 }
 
-STDMETHODIMP CLangBarItemButton::GetIcon(HICON* phIcon) {
-  if (ascii_mode) {
-    if (_style.current_ascii_icon.empty())
-      *phIcon = (HICON)LoadImageW(g_hInst, MAKEINTRESOURCEW(IDI_EN), IMAGE_ICON,
-                                  GetSystemMetrics(SM_CXSMICON),
-                                  GetSystemMetrics(SM_CYSMICON), LR_SHARED);
-    else
-      *phIcon =
-          (HICON)LoadImageW(NULL, _style.current_ascii_icon.c_str(), IMAGE_ICON,
-                            GetSystemMetrics(SM_CXSMICON),
-                            GetSystemMetrics(SM_CYSMICON), LR_LOADFROMFILE);
-  } else {
-    if (_style.current_zhung_icon.empty())
-      *phIcon = (HICON)LoadImageW(g_hInst, MAKEINTRESOURCEW(IDI_ZH), IMAGE_ICON,
-                                  GetSystemMetrics(SM_CXSMICON),
-                                  GetSystemMetrics(SM_CYSMICON), LR_SHARED);
-    else
-      *phIcon =
-          (HICON)LoadImageW(NULL, _style.current_zhung_icon.c_str(), IMAGE_ICON,
-                            GetSystemMetrics(SM_CXSMICON),
-                            GetSystemMetrics(SM_CYSMICON), LR_LOADFROMFILE);
+LRESULT CALLBACK CLangBarItemButton::ThemeWindowProc(HWND window, UINT message, WPARAM w, LPARAM l) {
+  if (message == WM_NCCREATE) {
+    auto* create = reinterpret_cast<CREATESTRUCTW*>(l);
+    SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create->lpCreateParams));
   }
-  return (*phIcon == NULL) ? E_FAIL : S_OK;
+  auto* self = reinterpret_cast<CLangBarItemButton*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+  if (self && (message == WM_SETTINGCHANGE || message == WM_THEMECHANGED || message == WM_SYSCOLORCHANGE)) {
+    if (self->_pLangBarItemSink)
+      self->_pLangBarItemSink->OnUpdate(TF_LBI_ICON);
+  }
+  return DefWindowProcW(window, message, w, l);
+}
+
+STDMETHODIMP CLangBarItemButton::GetIcon(HICON* phIcon) {
+  if (!phIcon) return E_INVALIDARG;
+  *phIcon = nullptr;
+  const auto& custom = ascii_mode ? _style.current_ascii_icon : _style.current_zhung_icon;
+  const int width = GetSystemMetrics(SM_CXSMICON);
+  const int height = GetSystemMetrics(SM_CYSMICON);
+  if (!custom.empty()) {
+    *phIcon = static_cast<HICON>(LoadImageW(nullptr, custom.c_str(), IMAGE_ICON,
+        width, height, LR_LOADFROMFILE));
+  } else {
+    *phIcon = bangke::CreateStatusIcon(ascii_mode, width, height);
+    if (!*phIcon) {
+      // Return an owned icon even on the resource fallback path.
+      *phIcon = static_cast<HICON>(LoadImageW(g_hInst,
+          MAKEINTRESOURCEW(ascii_mode ? IDI_EN : IDI_ZH), IMAGE_ICON, width, height, 0));
+    }
+  }
+  return *phIcon ? S_OK : E_FAIL;
 }
 
 STDMETHODIMP CLangBarItemButton::GetText(BSTR* pbstrText) {

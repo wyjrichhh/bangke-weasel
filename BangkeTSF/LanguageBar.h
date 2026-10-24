@@ -36,6 +36,10 @@ class CLangBarItemButton : public ITfLangBarItemButton, public ITfSource {
   void SetLangbarStatus(DWORD dwStatus, BOOL fSet);
 
  private:
+  static LRESULT CALLBACK ThemeWindowProc(HWND window, UINT message, WPARAM w, LPARAM l);
+  HWND _themeWindow = nullptr;
+  ATOM _themeClass = 0;
+  std::wstring _themeClassName;
   GUID _guid;
   com_ptr<BangkeTSF> _pTextService;
   com_ptr<ITfLangBarItemSink> _pLangBarItemSink;
