@@ -5,7 +5,6 @@
 #include <QPalette>
 #include <QTextBrowser>
 #include <QDialog>
-#include <QScreen>
 #include <QCheckBox>
 #include <QDir>
 #include <QFile>
@@ -484,8 +483,8 @@ class MainWindow : public QWidget {
     panel->setObjectName("panel");
     // 投影边距独立于内容区，避免边缘被裁切。
     auto* shadow = new QGraphicsDropShadowEffect(this);
-    shadow->setBlurRadius(44);
-    shadow->setOffset(0, 10);
+    shadow->setBlurRadius(12);
+    shadow->setOffset(0, 6);
     shadow->setColor(QColor(16, 24, 26, 60));
     panel->setGraphicsEffect(shadow);
     root->setContentsMargins(18, 14, 18, 22);  // 给投影留边

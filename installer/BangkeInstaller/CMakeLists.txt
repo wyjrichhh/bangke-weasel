@@ -29,6 +29,7 @@ configure_file(BangkeInstaller.rc.in BangkeInstaller.rc @ONLY)
 
 qt_add_executable(BangkeInstaller WIN32
   main.cpp
+  dpi.manifest
   BangkeInstaller.rc
 )
 
