@@ -46,6 +46,44 @@ ColumnLayout {
     radius: Theme.cardRadius
     color: Theme.surface
     border.color: Theme.hair
+
+    Canvas {
+      id: sceneGlow
+      anchors.fill: parent
+      anchors.margins: 1
+      visible: Theme.dark
+      onWidthChanged: requestPaint()
+      onHeightChanged: requestPaint()
+      Connections {
+        target: Theme
+        function onDarkChanged() { sceneGlow.requestPaint() }
+      }
+      onPaint: {
+        const ctx = getContext("2d")
+        ctx.reset()
+        const r = Theme.cardRadius - 1
+        ctx.beginPath()
+        ctx.moveTo(r, 0)
+        ctx.lineTo(width - r, 0)
+        ctx.quadraticCurveTo(width, 0, width, r)
+        ctx.lineTo(width, height - r)
+        ctx.quadraticCurveTo(width, height, width - r, height)
+        ctx.lineTo(r, height)
+        ctx.quadraticCurveTo(0, height, 0, height - r)
+        ctx.lineTo(0, r)
+        ctx.quadraticCurveTo(0, 0, r, 0)
+        ctx.clip()
+        // Match the demo's elliptical glow at the scene's upper-right corner.
+        ctx.scale(1, height / width)
+        const glow = ctx.createRadialGradient(width, 0, 0, width, 0, width)
+        glow.addColorStop(0, Theme.accentSoft)
+        glow.addColorStop(0.7, Theme.surface)
+        glow.addColorStop(1, Theme.surface)
+        ctx.fillStyle = glow
+        ctx.fillRect(0, 0, width, width)
+      }
+    }
+
     ColumnLayout {
       anchors.fill: parent
       anchors.margins: 20
