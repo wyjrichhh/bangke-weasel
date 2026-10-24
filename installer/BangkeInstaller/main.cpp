@@ -670,6 +670,7 @@ class MainWindow : public QWidget {
                                                         : QStringLiteral(u"正在安装 蚌壳拼音"));
     m_progressHint->setText(progressHint());
     m_running = true;
+    m_closeBtn->setEnabled(false);
     switchPage(progressPage_);
 
     QFile::remove(MsiLogPath(m_msiPath));
@@ -777,6 +778,7 @@ class MainWindow : public QWidget {
     if (!m_running) return;
     stopLogWatch();
     m_running = false;
+    m_closeBtn->setEnabled(true);
     const int r = m_exitCode;
     if (m_proc) { m_proc->deleteLater(); m_proc = nullptr; }
     switchPage(finishPage_);

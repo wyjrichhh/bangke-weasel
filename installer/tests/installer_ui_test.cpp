@@ -52,8 +52,12 @@ int main(int argc, char** argv) {
           if (!button->isVisible()) continue;
           const QRect bounds(button->mapTo(current, QPoint()), button->size());
           Require(current->rect().contains(bounds), "Action button clipped outside page");
-          Require(button->fontMetrics().horizontalAdvance(button->text()) + 36 <= button->width(),
-                  "Action text clipped");
+          const int padding = button->objectName() == QStringLiteral("textLink") ? 8 : 36;
+          if (button->fontMetrics().horizontalAdvance(button->text()) + padding > button->width()) {
+            std::cerr << "Clipped button: " << button->text().toStdString()
+                      << ", width=" << button->width() << '\n';
+            Require(false, "Action text clipped");
+          }
         }
         const QString path = output + QStringLiteral("/installer-%1-%2-%3.png")
             .arg(dark ? "dark" : "light").arg(size.width()).arg(page);

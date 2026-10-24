@@ -42,5 +42,5 @@ if(WIN32)
     FILES "../../resource/bangke-appicon.png" "../../LICENSE.txt"
   )
   add_test(NAME installer_ui COMMAND installer_ui_test)
-  set_tests_properties(installer_ui PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+  set_tests_properties(installer_ui PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=windows")
 endif()
