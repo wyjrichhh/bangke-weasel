@@ -11,10 +11,23 @@ $root = (Resolve-Path $OutputDir).Path
 # Reject incomplete packages before WiX turns missing features into a valid MSI.
 foreach ($required in @('BangkeServer.exe', 'BangkeSettings.exe', 'bangkex64.dll', 'rime.dll',
     'data\default.yaml', 'data\weasel.yaml', 'data\rime_ice.schema.yaml', 'data\luna_pinyin.schema.yaml',
+    'data\rime_ice.dict.yaml', 'data\luna_pinyin.dict.yaml', 'data\melt_eng.dict.yaml',
+    'data\radical_pinyin.dict.yaml', 'data\punctuation.yaml', 'data\pinyin.yaml',
+    'data\key_bindings.yaml', 'data\symbols.yaml', 'data\symbols_v.yaml',
+    'data\symbols_caps_v.yaml', 'data\essay.txt',
     'predict_models\zh-base-ct2-int8\model.bin', 'predict_models\zh-base-ct2-int8\tokenizer.json',
     'predict_models\zh-base-ct2-int8\shared_vocabulary.json')) {
   $file = Get-Item (Join-Path $root $required) -ErrorAction SilentlyContinue
   if (-not $file -or $file.PSIsContainer -or $file.Length -eq 0) { throw "Required package file missing: $required" }
+}
+
+# Schemas depend on these resource trees even when cached build files exist.
+foreach ($requiredDir in @('cn_dicts', 'en_dicts', 'lua', 'opencc')) {
+  $path = Join-Path $root ('data\' + $requiredDir)
+  if (-not (Test-Path $path -PathType Container) -or
+      -not (Get-ChildItem $path -Recurse -File | Where-Object { $_.Length -gt 0 } | Select-Object -First 1)) {
+    throw "Required package resource tree missing or empty: data\$requiredDir"
+  }
 }
 
 # 兜底：Qt(/MD) 依赖 VC 运行库，随程序目录捆绑，防目标机 System32 CRT 异常
